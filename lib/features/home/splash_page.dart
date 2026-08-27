@@ -7,8 +7,8 @@ import '../../core/widgets/pulse.dart';
 import '../../core/widgets/starfield.dart';
 import '../../engine/registry.dart';
 
-/// Pulsating splash. The mark breathes inside an emanating halo while the
-/// starfield falls behind it, then the whole lockup lifts away into the app.
+/// Branding splash. The complete lockup settles early, then stays visible so
+/// the native Android launch icon does not feel like it is being skipped.
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
 
@@ -19,25 +19,14 @@ class SplashPage extends StatefulWidget {
 class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   late final AnimationController _intro = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1400),
+    // Long enough for the native icon splash to hand off into this animation
+    // and for the full lockup to be seen clearly on a real phone.
+    duration: const Duration(seconds: 4),
   );
   late final AnimationController _breathe = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 2200),
   )..repeat(reverse: true);
-
-  late final Animation<double> _markIn = CurvedAnimation(
-    parent: _intro,
-    curve: const Interval(0.0, 0.55, curve: Curves.easeOutBack),
-  );
-  late final Animation<double> _textIn = CurvedAnimation(
-    parent: _intro,
-    curve: const Interval(0.35, 0.8, curve: Curves.easeOut),
-  );
-  late final Animation<double> _footIn = CurvedAnimation(
-    parent: _intro,
-    curve: const Interval(0.6, 1.0, curve: Curves.easeOut),
-  );
 
   @override
   void initState() {
@@ -46,9 +35,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   }
 
   Future<void> _go() async {
-    // Leave as soon as the intro has actually played, rather than sitting on a
-    // fixed timer. The old unconditional 2.1s delay was ~700ms of dead time
-    // after the animation had already settled, on every single launch.
+    // Keep the full branding screen visible for this four-second trial.
     await _intro.forward().orCancel.catchError((_) {});
     if (mounted) context.go('/');
   }
@@ -73,76 +60,88 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
             child: Column(
               children: [
                 const Spacer(flex: 3),
-                ScaleTransition(
-                  scale: Tween<double>(begin: 0.72, end: 1.0).animate(_markIn),
-                  child: FadeTransition(
-                    opacity: _markIn,
-                    child: AnimatedBuilder(
-                      animation: _breathe,
-                      builder: (context, child) => Transform.scale(
-                        scale: 1.0 + _breathe.value * 0.035,
-                        child: child,
-                      ),
-                      child: const PulseHalo(
-                        size: 190,
-                        rings: 3,
-                        child: OneKitMark(size: 96),
-                      ),
-                    ),
+                AnimatedBuilder(
+                  animation: _breathe,
+                  builder: (context, child) => Transform.scale(
+                    scale: 1.0 + _breathe.value * 0.035,
+                    child: child,
+                  ),
+                  child: const PulseHalo(
+                    size: 190,
+                    rings: 3,
+                    child: OneKitMark(size: 96),
                   ),
                 ),
                 const SizedBox(height: 26),
-                FadeTransition(
-                  opacity: _textIn,
-                  child: SlideTransition(
-                    position: Tween(begin: const Offset(0, 0.25), end: Offset.zero).animate(_textIn),
-                    child: Column(
-                      children: [
-                        Text.rich(
+                Column(
+                  children: [
+                    Text.rich(
+                      TextSpan(
+                        children: [
                           TextSpan(
-                            children: [
-                              TextSpan(text: 'One', style: TextStyle(fontWeight: FontWeight.w800, color: t.textPrimary)),
-                              TextSpan(text: 'Kit', style: TextStyle(fontWeight: FontWeight.w300, color: t.textPrimary)),
-                            ],
+                            text: 'One',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: t.textPrimary,
+                            ),
                           ),
-                          style: const TextStyle(fontSize: 42, letterSpacing: -1.6, height: 1.0),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          'LOCAL FILE CONVERTER',
-                          style: TextStyle(
-                            fontSize: 11,
-                            letterSpacing: 4.2,
-                            fontWeight: FontWeight.w600,
-                            color: t.textFaint,
+                          TextSpan(
+                            text: 'Kit',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w300,
+                              color: t.textPrimary,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      style: const TextStyle(
+                        fontSize: 42,
+                        letterSpacing: -1.6,
+                        height: 1.0,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'LOCAL FILE CONVERTER',
+                      style: TextStyle(
+                        fontSize: 11,
+                        letterSpacing: 4.2,
+                        fontWeight: FontWeight.w600,
+                        color: t.textFaint,
+                      ),
+                    ),
+                  ],
                 ),
                 const Spacer(flex: 3),
-                FadeTransition(
-                  opacity: _footIn,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 36),
-                    child: Column(
-                      children: [
-                        _Pill(text: '${_formatCount(FormatRegistry.pairCount)} conversions'),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.lock_outline_rounded, size: 13, color: t.textFaint),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Runs entirely on your device',
-                              style: TextStyle(fontSize: 12, color: t.textFaint, fontWeight: FontWeight.w500),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 36),
+                  child: Column(
+                    children: [
+                      _Pill(
+                        text:
+                            '${_formatCount(FormatRegistry.pairCount)} conversions',
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.lock_outline_rounded,
+                            size: 13,
+                            color: t.textFaint,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Runs entirely on your device',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: t.textFaint,
+                              fontWeight: FontWeight.w500,
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -154,7 +153,9 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   }
 }
 
-String _formatCount(int n) => n >= 1000 ? '${(n / 1000).floor()},${(n % 1000).toString().padLeft(3, '0')}' : '$n';
+String _formatCount(int n) => n >= 1000
+    ? '${(n / 1000).floor()},${(n % 1000).toString().padLeft(3, '0')}'
+    : '$n';
 
 class _Pill extends StatelessWidget {
   const _Pill({required this.text});
@@ -171,7 +172,12 @@ class _Pill extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: t.textSecondary, letterSpacing: 0.2),
+        style: TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w700,
+          color: t.textSecondary,
+          letterSpacing: 0.2,
+        ),
       ),
     );
   }

@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -66,7 +69,11 @@ class _BatchPageState extends State<BatchPage> {
   void dispose() {
     _overallProgress.dispose();
     _cancel?.cancel();
-    _extracted?.delete(recursive: true).catchError((_) => Directory(''));
+    // Do not delete extracted inputs while a cancelled converter may still be
+    // unwinding. The run loop cleans them after all workers have stopped.
+    if (!_running) {
+      _extracted?.delete(recursive: true).catchError((_) => Directory(''));
+    }
     super.dispose();
   }
 
@@ -136,36 +143,41 @@ class _BatchPageState extends State<BatchPage> {
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final archive = ZipDecoder().decodeBytes(await File(path).readAsBytes());
       final dir = await Directory(
-        p.join((await ConversionEngine.tempDir()).path, 'zip_${DateTime.now().millisecondsSinceEpoch}'),
+        p.join(
+          (await ConversionEngine.tempDir()).path,
+          'zip_${DateTime.now().millisecondsSinceEpoch}',
+        ),
       ).create(recursive: true);
       _extracted = dir;
-
-      final extracted = <String>[];
-      for (final f in archive.files) {
-        if (!f.isFile) continue;
-        // Flatten to basenames so a crafted entry name cannot escape the
-        // extraction directory.
-        final name = p.basename(f.name);
-        if (name.isEmpty || name.startsWith('.')) continue;
-        if (FormatRegistry.byExt(p.extension(name)) == null) continue;
-        final out = File(p.join(dir.path, name));
-        await out.writeAsBytes(f.content as List<int>, flush: true);
-        extracted.add(out.path);
-      }
-
+      // Parse/decompress/write in a background isolate. The archive decoder
+      // reads from disk and writes each entry in bounded chunks, so a 2 GB ZIP
+      // does not become a 2 GB Dart byte array or freeze the UI isolate.
+      final extracted = await Isolate.run(
+        () => _extractZipToDisk(path, dir.path),
+      );
       if (extracted.isEmpty) {
         messenger.showSnackBar(
-          const SnackBar(content: Text('No convertible files were found in that ZIP.')),
+          const SnackBar(
+            content: Text('No convertible files were found in that ZIP.'),
+          ),
         );
         return;
       }
       _addPaths(extracted, label: p.basename(path));
       messenger.showSnackBar(
-        SnackBar(content: Text('Added ${extracted.length} files from ${p.basename(path)}')),
+        SnackBar(
+          content: Text(
+            'Added ${extracted.length} files from ${p.basename(path)}',
+          ),
+        ),
       );
     } catch (e) {
+      final extractedDir = _extracted;
+      _extracted = null;
+      if (extractedDir != null && await extractedDir.exists()) {
+        await extractedDir.delete(recursive: true);
+      }
       messenger.showSnackBar(
         const SnackBar(content: Text('That ZIP could not be opened.')),
       );
@@ -269,9 +281,11 @@ class _BatchPageState extends State<BatchPage> {
   /// memory pressure and heat.
   static int _concurrencyFor(List<_Item> queue, FileFormat target) {
     const heavyBytes = 100 * 1024 * 1024;
-    final heavy = target.family == Family.video ||
-        queue.any((i) =>
-            i.format?.family == Family.video || i.sizeBytes > heavyBytes);
+    final heavy =
+        target.family == Family.video ||
+        queue.any(
+          (i) => i.format?.family == Family.video || i.sizeBytes > heavyBytes,
+        );
     if (heavy) return 1;
     return (Platform.numberOfProcessors ~/ 2).clamp(1, 4);
   }
@@ -289,7 +303,20 @@ class _BatchPageState extends State<BatchPage> {
     return (sum / _items.length).clamp(0.0, 1.0);
   }
 
-  List<_Item> get _done => _items.where((i) => i.job?.status == JobStatus.done).toList();
+  List<_Item> get _done =>
+      _items.where((i) => i.job?.status == JobStatus.done).toList();
+
+  List<_Item> get _failed =>
+      _items.where((i) => i.job?.status == JobStatus.failed).toList();
+
+  List<_Item> get _cancelled =>
+      _items.where((i) => i.job?.status == JobStatus.cancelled).toList();
+
+  bool get _hasFinished => _items.any((i) => i.job?.isTerminal ?? false);
+
+  void _openFiles() {
+    if (mounted) context.go('/files');
+  }
 
   Future<void> _shareAll() async {
     final files = [
@@ -297,11 +324,14 @@ class _BatchPageState extends State<BatchPage> {
         if (i.job?.outputPath != null) XFile(i.job!.outputPath!),
     ];
     if (files.isEmpty) return;
-    await SharePlus.instance.share(ShareParams(files: files, subject: 'Converted with OneKit'));
+    await SharePlus.instance.share(
+      ShareParams(files: files, subject: 'Converted with OneKit'),
+    );
   }
 
   /// Packs every successful output into one ZIP for a single share/save.
   Future<void> _zipResults() async {
+    final configuredDir = context.read<SettingsStore>().outputDir;
     final outputs = [
       for (final i in _done)
         if (i.job?.outputPath != null) i.job!.outputPath!,
@@ -316,7 +346,9 @@ class _BatchPageState extends State<BatchPage> {
     }
     final encoded = ZipEncoder().encode(archive);
 
-    final dir = await ConversionEngine.outputDir();
+    final dir = configuredDir == null || configuredDir.isEmpty
+        ? await ConversionEngine.outputDir()
+        : Directory(configuredDir);
     await dir.create(recursive: true);
     final zipPath = p.join(
       dir.path,
@@ -324,7 +356,9 @@ class _BatchPageState extends State<BatchPage> {
     );
     await File(zipPath).writeAsBytes(encoded, flush: true);
 
-    messenger.showSnackBar(SnackBar(content: Text('Saved ${p.basename(zipPath)}')));
+    messenger.showSnackBar(
+      SnackBar(content: Text('Saved ${p.basename(zipPath)}')),
+    );
     await SharePlus.instance.share(ShareParams(files: [XFile(zipPath)]));
   }
 
@@ -335,7 +369,8 @@ class _BatchPageState extends State<BatchPage> {
     final updated = await showModalBottomSheet<ConvertOptions>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => OptionsSheet(source: source, target: target, options: _options),
+      builder: (_) =>
+          OptionsSheet(source: source, target: target, options: _options),
     );
     if (updated != null && mounted) setState(() => _options = updated);
   }
@@ -346,6 +381,9 @@ class _BatchPageState extends State<BatchPage> {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final targets = _commonTargets();
+    final done = _done.length;
+    final failed = _failed.length;
+    final cancelled = _cancelled.length;
 
     return Column(
       children: [
@@ -353,7 +391,11 @@ class _BatchPageState extends State<BatchPage> {
           title: 'Batch',
           subtitle: _items.isEmpty
               ? 'Convert many files at once'
-              : '${_items.length} file${_items.length == 1 ? '' : 's'} queued',
+              : _running
+                  ? '${_items.length} file${_items.length == 1 ? '' : 's'} queued'
+                  : _hasFinished
+                      ? '$done converted · $failed failed${cancelled == 0 ? '' : ' · $cancelled cancelled'}'
+                      : '${_items.length} file${_items.length == 1 ? '' : 's'} queued',
           actions: [
             if (_items.isNotEmpty && !_running)
               IconButton(
@@ -367,9 +409,7 @@ class _BatchPageState extends State<BatchPage> {
               ),
           ],
         ),
-        Expanded(
-          child: _items.isEmpty ? _empty() : _queue(targets),
-        ),
+        Expanded(child: _items.isEmpty ? _empty() : _queue(targets)),
         if (_items.isNotEmpty) _bottomBar(t, targets),
       ],
     );
@@ -412,7 +452,6 @@ class _BatchPageState extends State<BatchPage> {
   Widget _queue(List<FileFormat> targets) {
     final t = context.tokens;
     // Computed once per build; it was previously re-scanned three times.
-    final done = _done;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       children: [
@@ -428,12 +467,17 @@ class _BatchPageState extends State<BatchPage> {
                 const SizedBox(height: 8),
                 Text(
                   'Converting to ${_target?.upper ?? ''}',
-                  style: TextStyle(fontSize: 13, color: t.textFaint, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: t.textFaint,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
           )
         else ...[
+          if (_hasFinished) _completionSummary(),
           Row(
             children: [
               Expanded(
@@ -454,13 +498,19 @@ class _BatchPageState extends State<BatchPage> {
             ],
           ),
           SectionTitle(
-            targets.isEmpty ? 'No shared target format' : 'Convert everything to',
+            targets.isEmpty
+                ? 'No shared target format'
+                : 'Convert everything to',
           ),
           if (targets.isEmpty)
             Panel(
               child: Text(
                 'These files have no target format in common. Remove the odd one out, or convert them in separate batches.',
-                style: TextStyle(fontSize: 13.5, height: 1.5, color: t.textFaint),
+                style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.5,
+                  color: t.textFaint,
+                ),
               ),
             )
           else
@@ -493,44 +543,123 @@ class _BatchPageState extends State<BatchPage> {
                 onRemove: _running
                     ? null
                     : () => setState(() {
-                          _items.remove(item);
-                          _commonTargetsCache = null;
-                        }),
+                        _items.remove(item);
+                        _commonTargetsCache = null;
+                      }),
               ),
             );
           },
         ),
-        if (done.isNotEmpty && !_running) ...[
-          const SectionTitle('Results'),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _shareAll,
-                  icon: const Icon(Icons.ios_share_rounded, size: 18),
-                  label: Text('Share ${done.length}'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _zipResults,
-                  icon: const Icon(Icons.folder_zip_rounded, size: 18),
-                  label: const Text('Save as ZIP'),
-                ),
-              ),
-            ],
-          ),
-        ],
         const SizedBox(height: 16),
         const OneKitBanner(),
       ],
     );
   }
 
+  Widget _completionSummary() {
+    final t = context.tokens;
+    final done = _done.length;
+    final failed = _failed.length;
+    final cancelled = _cancelled.length;
+    final configuredDir = context.read<SettingsStore>().outputDir;
+    final location = configuredDir == null || configuredDir.isEmpty
+        ? 'OneKit folder in app storage'
+        : configuredDir;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Panel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  failed == 0 && cancelled == 0
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.info_outline_rounded,
+                  color: failed == 0 && cancelled == 0
+                      ? t.accent
+                      : t.textSecondary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    failed == 0 && cancelled == 0
+                        ? 'Conversion complete'
+                        : 'Conversion finished with issues',
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '$done converted${failed == 0 ? '' : ' · $failed failed'}${cancelled == 0 ? '' : ' · $cancelled cancelled'}',
+              style: TextStyle(
+                color: t.textSecondary,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Saved to: $location',
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: t.textFaint, fontSize: 12.5, height: 1.35),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _openFiles,
+                    icon: const Icon(Icons.folder_open_rounded, size: 18),
+                    label: const Text('View files'),
+                  ),
+                ),
+                if (done > 0) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _shareAll,
+                      icon: const Icon(Icons.ios_share_rounded, size: 18),
+                      label: Text('Share $done'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (done > 0) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _zipResults,
+                  icon: const Icon(Icons.folder_zip_rounded, size: 18),
+                  label: const Text('Save as ZIP and share'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _bottomBar(dynamic t, List<FileFormat> targets) {
     return Container(
-      padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.viewPaddingOf(context).bottom + 14),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        12,
+        20,
+        MediaQuery.viewPaddingOf(context).bottom + 14,
+      ),
       decoration: BoxDecoration(
         color: t.background.withValues(alpha: 0.95),
         border: Border(top: BorderSide(color: t.border)),
@@ -538,7 +667,10 @@ class _BatchPageState extends State<BatchPage> {
       child: _running
           ? SizedBox(
               width: double.infinity,
-              child: OutlinedButton(onPressed: _cancelAll, child: const Text('Cancel batch')),
+              child: OutlinedButton(
+                onPressed: _cancelAll,
+                child: const Text('Cancel batch'),
+              ),
             )
           : Row(
               children: [
@@ -556,7 +688,9 @@ class _BatchPageState extends State<BatchPage> {
                   ),
                 Expanded(
                   child: FilledButton(
-                    onPressed: _target == null || targets.isEmpty ? null : _runAll,
+                    onPressed: _target == null || targets.isEmpty
+                        ? null
+                        : _runAll,
                     child: Text(
                       _target == null
                           ? 'Pick a format'
@@ -572,7 +706,7 @@ class _BatchPageState extends State<BatchPage> {
 
 class _Item {
   _Item({required this.path, required this.format, this.label})
-      : sizeBytes = _sizeOf(path);
+    : sizeBytes = _sizeOf(path);
 
   final String path;
   final FileFormat? format;
@@ -595,8 +729,76 @@ class _Item {
   }
 }
 
+/// Extracts only convertible ZIP entries to disk. This function is top-level
+/// so it can run in [Isolate.run] without capturing widget state.
+Future<List<String>> _extractZipToDisk(
+  String archivePath,
+  String outputPath,
+) async {
+  final input = InputFileStream(archivePath);
+  try {
+    final archive = ZipDecoder().decodeStream(input);
+    final extracted = <String>[];
+    final usedPaths = <String>{};
+
+    for (final f in archive.files) {
+      if (!f.isFile || f.isSymbolicLink) continue;
+      final name = _safeArchiveName(f.name);
+      if (name == null || FormatRegistry.byExt(p.extension(name)) == null) {
+        continue;
+      }
+
+      var relative = name;
+      var out = File(p.join(outputPath, relative));
+      var n = 1;
+      while (usedPaths.contains(out.path) || await out.exists()) {
+        final ext = p.extension(name);
+        final stem = p.basenameWithoutExtension(name);
+        final parent = p.dirname(name);
+        relative = p.join(parent, '$stem ($n)$ext');
+        out = File(p.join(outputPath, relative));
+        n++;
+      }
+      usedPaths.add(out.path);
+      await out.parent.create(recursive: true);
+
+      final output = OutputFileStream(out.path);
+      try {
+        // Archive writes through its own bounded stream rather than materialising
+        // the decompressed entry as a List<int>.
+        f.writeContent(output, freeMemory: true);
+      } finally {
+        output.closeSync();
+      }
+      extracted.add(out.path);
+    }
+    return extracted;
+  } finally {
+    await input.close();
+  }
+}
+
+/// Returns a safe relative archive path, or null for traversal/hidden
+/// entries that should not become conversion inputs.
+String? _safeArchiveName(String raw) {
+  final normalized = raw.replaceAll('\\', '/');
+  final parts = normalized
+      .split('/')
+      .where((part) => part.isNotEmpty && part != '.')
+      .toList();
+  if (parts.isEmpty ||
+      parts.any((part) => part == '..' || part.startsWith('.'))) {
+    return null;
+  }
+  return p.joinAll(parts);
+}
+
 class _TargetPill extends StatelessWidget {
-  const _TargetPill({required this.format, required this.selected, required this.onTap});
+  const _TargetPill({
+    required this.format,
+    required this.selected,
+    required this.onTap,
+  });
   final FileFormat format;
   final bool selected;
   final VoidCallback onTap;
@@ -659,7 +861,11 @@ class _ItemRow extends StatelessWidget {
                       p.basename(item.path),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: t.textPrimary),
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: t.textPrimary,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     if (job != null && job.status == JobStatus.running)
@@ -718,16 +924,19 @@ class _ItemRow extends StatelessWidget {
     if (unsupported) return 'Unsupported file type';
     final size = item.sizeBytes > 0 ? humanBytes(item.sizeBytes) : '';
     if (job == null) {
-      return [if (item.label != null) 'from ${item.label}', size]
-          .where((s) => s.isNotEmpty)
-          .join(' · ');
+      return [
+        if (item.label != null) 'from ${item.label}',
+        size,
+      ].where((s) => s.isNotEmpty).join(' · ');
     }
     return switch (job.status) {
       JobStatus.queued => 'Waiting',
-      JobStatus.running => job.indeterminate
-          ? 'Converting'
-          : 'Converting ${(job.progress * 100).toStringAsFixed(0)}%',
-      JobStatus.done => 'Done · ${humanBytes(job.outputBytes)} · ${humanDuration(job.elapsed)}',
+      JobStatus.running =>
+        job.indeterminate
+            ? 'Converting'
+            : 'Converting ${(job.progress * 100).toStringAsFixed(0)}%',
+      JobStatus.done =>
+        'Done · ${humanBytes(job.outputBytes)} · ${humanDuration(job.elapsed)}',
       JobStatus.cancelled => 'Cancelled',
       JobStatus.failed => job.error ?? 'Failed',
     };

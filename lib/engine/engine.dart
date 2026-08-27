@@ -56,6 +56,7 @@ class ConversionEngine {
     String? outputDirectory,
   }) async {
     final started = DateTime.now();
+    String? reservedOutputPath;
     job.status = JobStatus.running;
     job.progress = 0;
     job.error = null;
@@ -74,12 +75,22 @@ class ConversionEngine {
 
       final converter = resolve(from, job.target);
       if (converter == null) {
-        throw ConversionException('${from.upper} to ${job.target.upper} is not supported.');
+        throw ConversionException(
+          '${from.upper} to ${job.target.upper} is not supported.',
+        );
       }
 
       final dir = outputDirectory ?? (await outputDir()).path;
       await Directory(dir).create(recursive: true);
-      final outPath = await _uniquePath(dir, job.baseName, job.target.ext);
+      // Reserve the name atomically. A batch may have several workers asking
+      // for the same basename at the same time; an exists-then-write check is
+      // racy and can make FFmpeg overwrite another result.
+      final outPath = await _reserveUniquePath(
+        dir,
+        job.baseName,
+        job.target.ext,
+      );
+      reservedOutputPath = outPath;
 
       final extras = <String>[];
       // Converters report as fast as their backend does — ffmpeg's statistics
@@ -88,30 +99,32 @@ class ConversionEngine {
       var lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
       const minGap = Duration(milliseconds: 50);
 
-      await converter.convert(ConvertRequest(
-        inputPath: job.sourcePath,
-        outputPath: outPath,
-        from: from,
-        to: job.target,
-        options: job.options,
-        cancel: cancel,
-        extraOutputs: extras,
-        onProgress: (value, {bool indeterminate = false}) {
-          // Progress must never go backwards; ffmpeg occasionally reports a
-          // stale statistic after a seek.
-          final clamped = value.clamp(0.0, 1.0);
-          if (clamped < job.progress && !indeterminate) return;
+      await converter.convert(
+        ConvertRequest(
+          inputPath: job.sourcePath,
+          outputPath: outPath,
+          from: from,
+          to: job.target,
+          options: job.options,
+          cancel: cancel,
+          extraOutputs: extras,
+          onProgress: (value, {bool indeterminate = false}) {
+            // Progress must never go backwards; ffmpeg occasionally reports a
+            // stale statistic after a seek.
+            final clamped = value.clamp(0.0, 1.0);
+            if (clamped < job.progress && !indeterminate) return;
 
-          final now = DateTime.now();
-          final isEdge = clamped >= 1.0 || job.indeterminate != indeterminate;
-          if (!isEdge && now.difference(lastEmit) < minGap) return;
-          lastEmit = now;
+            final now = DateTime.now();
+            final isEdge = clamped >= 1.0 || job.indeterminate != indeterminate;
+            if (!isEdge && now.difference(lastEmit) < minGap) return;
+            lastEmit = now;
 
-          job.indeterminate = indeterminate;
-          job.progress = clamped;
-          onUpdate?.call();
-        },
-      ));
+            job.indeterminate = indeterminate;
+            job.progress = clamped;
+            onUpdate?.call();
+          },
+        ),
+      );
 
       cancel.throwIfCancelled();
 
@@ -139,6 +152,16 @@ class ConversionEngine {
           : 'Something went wrong converting this file.';
       job.errorDetail = '$e';
     } finally {
+      // A cancelled or failed converter may leave a partial output behind.
+      // Never expose that file as a valid result, and remove any sidecars a
+      // converter created before it failed.
+      if (job.status != JobStatus.done) {
+        await _deleteIfPresent(reservedOutputPath);
+        await _deleteIfPresent(job.outputPath);
+        for (final extra in job.extraOutputs) {
+          await _deleteIfPresent(extra);
+        }
+      }
       job.elapsed = DateTime.now().difference(started);
       onUpdate?.call();
     }
@@ -156,16 +179,39 @@ class ConversionEngine {
     return Directory(p.join(base.path, 'onekit_work'));
   }
 
-  /// Never overwrites: appends (1), (2), ... the way a desktop file manager does.
-  static Future<String> _uniquePath(String dir, String base, String ext) async {
+  /// Atomically reserves a path so concurrent batch workers cannot collide.
+  static Future<String> _reserveUniquePath(
+    String dir,
+    String base,
+    String ext,
+  ) async {
     final safe = base.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_').trim();
     final stem = safe.isEmpty ? 'converted' : safe;
     var candidate = p.join(dir, '$stem.$ext');
     var n = 1;
-    while (await File(candidate).exists()) {
-      candidate = p.join(dir, '$stem ($n).$ext');
-      n++;
+    while (true) {
+      try {
+        await File(candidate).create(exclusive: true);
+        return candidate;
+      } on FileSystemException {
+        // Only advance to the next suffix when another worker really won the
+        // race. Permission, storage, and other I/O failures must not become an
+        // infinite filename loop.
+        if (!await File(candidate).exists()) rethrow;
+        candidate = p.join(dir, '$stem ($n).$ext');
+        n++;
+      }
     }
-    return candidate;
+  }
+
+  static Future<void> _deleteIfPresent(String? path) async {
+    if (path == null || path.isEmpty) return;
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } on FileSystemException {
+      // Cleanup is best effort; the original conversion error is more useful
+      // to the user than a secondary deletion failure.
+    }
   }
 }

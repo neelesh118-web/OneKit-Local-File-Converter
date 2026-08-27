@@ -33,7 +33,15 @@ Future<void> main() async {
     ),
   );
 
-  // Ads initialise after the first frame is scheduled so nothing about the
-  // SDK's start-up can delay the splash.
-  unawaited(AdManager.instance.initialize());
+  // Give Flutter time to render the launch sequence and the first usable
+  // screen before the ads SDK starts loading native code and WebView pieces.
+  // This keeps monetisation from competing with the first frame.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(
+      Future<void>.delayed(
+        const Duration(milliseconds: 3500),
+        AdManager.instance.initialize,
+      ),
+    );
+  });
 }
