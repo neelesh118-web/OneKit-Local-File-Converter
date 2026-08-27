@@ -399,6 +399,15 @@ class FfmpegConverter extends FileConverter {
   static String _scaleFilter(ConvertOptions o, {bool forceEven = false}) {
     final w = o.width;
     final h = o.height;
+
+    // A ceiling, applied only when the source exceeds it. min() keeps small
+    // images at their own size rather than blowing them up.
+    final cap = o.maxEdge;
+    if (cap != null && w == null && h == null) {
+      final auto = forceEven ? '-2' : '-1';
+      return "scale='min($cap,iw)':$auto";
+    }
+
     if (w == null && h == null) {
       return forceEven ? 'scale=trunc(iw/2)*2:trunc(ih/2)*2' : 'scale=iw:ih';
     }

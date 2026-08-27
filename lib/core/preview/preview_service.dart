@@ -189,7 +189,7 @@ class PreviewService {
         // a full-size render would cost more than the conversion the user is
         // actually waiting for.
         options: const ConvertOptions(
-          width: _thumbSize,
+          maxEdge: _thumbSize,
           pdfPageRange: '1',
           pdfDpi: 72,
         ),

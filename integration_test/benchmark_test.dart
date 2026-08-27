@@ -11,7 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:onekit_converter/engine/converters/converter.dart';
 import 'package:onekit_converter/engine/converters/ffmpeg_converter.dart';
-import 'package:onekit_converter/engine/converters/image_converter.dart';
 import 'package:onekit_converter/engine/engine.dart';
 import 'package:onekit_converter/engine/job.dart';
 import 'package:onekit_converter/engine/registry.dart';
@@ -48,7 +47,12 @@ void main() {
     sw.stop();
     var bytes = 0;
     if (out != null && File(out).existsSync()) bytes = File(out).lengthSync();
-    results.add(_Result(label, sw.elapsed, bytes, ok: out != null));
+    final r = _Result(label, sw.elapsed, bytes, ok: out != null);
+    results.add(r);
+    // Printed as it happens, not only in the summary: a crash in a later group
+    // would otherwise throw away every number measured before it.
+    // ignore: avoid_print
+    print('BENCH ${_format(r)}');
     return sw.elapsed;
   }
 
@@ -160,13 +164,9 @@ void main() {
 
   // -------------------------------------------------------------- images
 
-  test('image: Dart vs FFmpeg head to head', () async {
-    // The whole reason this file exists. Same 12 MP source, same target, two
-    // engines, one number each.
-    await time('12MP PNG>JPG  [Dart]', () => viaConverter(const DartImageConverter(), photo, 'jpg'));
+  test('image: direct converter timings', () async {
     await time('12MP PNG>JPG  [FFmpeg]', () => viaConverter(const FfmpegConverter(), photo, 'jpg'));
     await time('12MP PNG>WEBP [FFmpeg]', () => viaConverter(const FfmpegConverter(), photo, 'webp'));
-    await time('12MP PNG>PNG  [Dart]', () => viaConverter(const DartImageConverter(), photo, 'bmp'));
     await time('12MP PNG>BMP  [FFmpeg]', () => viaConverter(const FfmpegConverter(), photo, 'bmp'));
   }, timeout: const Timeout(Duration(minutes: 10)));
 
@@ -215,7 +215,10 @@ void main() {
       await viaEngine(small, 'jpg');
     }
     sw.stop();
-    results.add(_Result('20x 1MP PNG>JPG serial', sw.elapsed, 0, ok: true));
+    final r = _Result('20x 1MP PNG>JPG serial', sw.elapsed, 0, ok: true);
+    results.add(r);
+    // ignore: avoid_print
+    print('BENCH ${_format(r)}');
   }, timeout: const Timeout(Duration(minutes: 20)));
 }
 
@@ -230,6 +233,13 @@ class _Result {
 String _mb(String path) {
   final b = File(path).existsSync() ? File(path).lengthSync() : 0;
   return '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
+}
+
+String _format(_Result r) {
+  final ms = r.elapsed.inMilliseconds;
+  final time = ms >= 1000 ? '${(ms / 1000).toStringAsFixed(2)} s' : '$ms ms';
+  final size = r.bytes > 0 ? ' -> ${(r.bytes / 1024).toStringAsFixed(0)} KB' : '';
+  return '${r.ok ? ' ' : '!'} ${r.label.padRight(28)} ${time.padLeft(9)}$size';
 }
 
 void _report(List<_Result> rows) {

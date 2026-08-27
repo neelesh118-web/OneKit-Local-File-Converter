@@ -78,12 +78,28 @@ class PdfConverter extends FileConverter {
     r.onProgress(1.0, indeterminate: false);
   }
 
+  /// Largest edge embedded into a PDF page. A 12 MP photo decodes to ~48 MB of
+  /// raw pixels inside the PDF writer, which is enough to kill the app on a
+  /// mid-range phone; 2400px is still 300 DPI across eight inches.
+  static const _maxEmbedEdge = 2400;
+
+  /// Above this, re-encode even a PNG or JPEG so the embedded bitmap stays
+  /// bounded. Smaller files are passed through untouched.
+  static const _passThroughLimit = 1500 * 1024;
+
   /// Returns a path to a PNG/JPEG the PDF writer can embed, transcoding first
-  /// when the source is something like AVIF, HEIC or SVG.
+  /// when the source is something the writer cannot take, or large enough that
+  /// embedding it as-is would exhaust memory.
   Future<String> _ensureEmbeddable(ConvertRequest r) async {
-    if (r.from.ext == 'png' || r.from.ext == 'jpg' || r.from.ext == 'jpeg') {
-      return r.inputPath;
+    final native = r.from.ext == 'png' || r.from.ext == 'jpg' || r.from.ext == 'jpeg';
+    var bytes = 0;
+    try {
+      bytes = await File(r.inputPath).length();
+    } on FileSystemException {
+      // Treated as large, which is the safe direction.
     }
+    if (native && bytes > 0 && bytes <= _passThroughLimit) return r.inputPath;
+
     final tmp = p.join(
       Directory.systemTemp.path,
       'onekit_${DateTime.now().microsecondsSinceEpoch}.png',
@@ -95,7 +111,9 @@ class PdfConverter extends FileConverter {
         outputPath: tmp,
         from: r.from,
         to: png,
-        options: r.options,
+        // The scale is a ceiling, not a resize: images already under the limit
+        // come through at their original size.
+        options: r.options.copyWith(maxEdge: _maxEmbedEdge),
         onProgress: (_, {bool indeterminate = false}) {},
         cancel: r.cancel,
       ),

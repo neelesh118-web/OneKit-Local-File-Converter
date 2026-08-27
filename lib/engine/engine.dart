@@ -10,7 +10,6 @@ import 'converters/data_converter.dart';
 import 'converters/document_converter.dart';
 import 'converters/ebook_converter.dart';
 import 'converters/ffmpeg_converter.dart';
-import 'converters/image_converter.dart';
 import 'converters/pdf_converter.dart';
 import 'converters/subtitle_converter.dart';
 import 'format.dart';
@@ -31,7 +30,9 @@ class ConversionEngine {
     DocumentConverter(),
     DataConverter(),
     ArchiveConverter(),
-    DartImageConverter(),
+    // Images go to FFmpeg. A pure-Dart path was tried first on the assumption
+    // that avoiding the native round trip would be faster; measured on device
+    // it was 9x slower on a 12 MP photo (23.7s vs 2.6s), so it was removed.
     FfmpegConverter(),
   ];
 

@@ -3,13 +3,11 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:image/image.dart' as img;
 import 'package:onekit_converter/engine/converters/archive_converter.dart';
 import 'package:onekit_converter/engine/converters/converter.dart';
 import 'package:onekit_converter/engine/converters/data_converter.dart';
 import 'package:onekit_converter/engine/converters/document_converter.dart';
 import 'package:onekit_converter/engine/converters/ebook_converter.dart';
-import 'package:onekit_converter/engine/converters/image_converter.dart';
 import 'package:onekit_converter/engine/converters/subtitle_converter.dart';
 import 'package:onekit_converter/engine/engine.dart';
 import 'package:onekit_converter/engine/format.dart';
@@ -378,63 +376,6 @@ Some paragraph text.
     });
   });
 
-  // ----------------------------------------------------------------- image
-
-  group('DartImageConverter', () {
-    const converter = DartImageConverter();
-
-    File makePng({int w = 40, int h = 24}) {
-      final image = img.Image(width: w, height: h);
-      img.fill(image, color: img.ColorRgb8(200, 40, 90));
-      return File(p.join(tmp.path, 'in.png'))..writeAsBytesSync(img.encodePng(image));
-    }
-
-    test('PNG to JPG produces a decodable JPEG at the same size', () async {
-      final out = await run(converter, makePng(), 'jpg');
-      final decoded = img.decodeJpg(out.readAsBytesSync())!;
-      expect(decoded.width, 40);
-      expect(decoded.height, 24);
-    });
-
-    test('PNG to BMP, TIFF, TGA, GIF and ICO all decode back', () async {
-      for (final ext in ['bmp', 'tiff', 'tga', 'gif', 'ico']) {
-        final out = await run(converter, makePng(), ext);
-        expect(
-          img.decodeNamedImage('x.$ext', out.readAsBytesSync()),
-          isNotNull,
-          reason: '$ext did not decode',
-        );
-      }
-    });
-
-    test('resize honours one dimension and keeps the aspect ratio', () async {
-      final out = await run(
-        converter,
-        makePng(w: 100, h: 50),
-        'png',
-        options: const ConvertOptions(width: 50),
-      );
-      final decoded = img.decodePng(out.readAsBytesSync())!;
-      expect(decoded.width, 50);
-      expect(decoded.height, 25);
-    });
-
-    test('lower quality yields a smaller JPEG', () async {
-      final source = makePng(w: 200, h: 200);
-      final high = await run(converter, source, 'jpg', options: const ConvertOptions(quality: 95));
-      final highSize = high.lengthSync();
-      final low = await run(converter, source, 'jpg', options: const ConvertOptions(quality: 20));
-      expect(low.lengthSync(), lessThan(highSize));
-    });
-
-    test('a corrupt image fails with a readable message', () async {
-      final bad = File(p.join(tmp.path, 'bad.png'))..writeAsBytesSync(List.filled(64, 3));
-      await expectLater(
-        run(converter, bad, 'jpg'),
-        throwsA(isA<ConversionException>()),
-      );
-    });
-  });
 
   // ----------------------------------------------------------------- ebook
 
@@ -472,10 +413,7 @@ Some paragraph text.
 
   group('ConversionEngine routing', () {
     test('each pair resolves to exactly one converter, most specific first', () {
-      expect(
-        ConversionEngine.instance.resolve(fmt('png'), fmt('jpg')),
-        isA<DartImageConverter>(),
-      );
+      expect(ConversionEngine.instance.resolve(fmt('png'), fmt('jpg'))!.name, 'FFmpeg');
       expect(ConversionEngine.instance.resolve(fmt('mp4'), fmt('mp3'))!.name, 'FFmpeg');
       expect(ConversionEngine.instance.resolve(fmt('csv'), fmt('json')), isA<DataConverter>());
       expect(ConversionEngine.instance.resolve(fmt('srt'), fmt('vtt')), isA<SubtitleConverter>());

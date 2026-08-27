@@ -32,7 +32,9 @@ class FormatRegistry {
     FileFormat('heif', 'High Efficiency Image', Family.image, write: false, mime: 'image/heif', lossy: true),
     FileFormat('jp2', 'JPEG 2000', Family.image, mime: 'image/jp2'),
     FileFormat('j2k', 'JPEG 2000 Codestream', Family.image, mime: 'image/j2k'),
-    FileFormat('jxl', 'JPEG XL', Family.image, write: false, mime: 'image/jxl'),
+    // JPEG XL is deliberately absent: the bundled FFmpeg has no libjxl, so
+    // nothing in the app can read it. Verified by the codec cross-check in
+    // integration_test/format_matrix_test.dart.
     FileFormat('exr', 'OpenEXR', Family.image, engine: Engine.dartImage, mime: 'image/x-exr'),
     FileFormat('hdr', 'Radiance HDR', Family.image, mime: 'image/vnd.radiance'),
     FileFormat('dds', 'DirectDraw Surface', Family.image, write: false, mime: 'image/vnd-ms.dds'),

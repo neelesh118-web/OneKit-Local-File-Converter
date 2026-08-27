@@ -183,6 +183,44 @@ void main() {
     }
   }, timeout: const Timeout(Duration(minutes: 10)));
 
+  // ------------------------------------------------- capability cross-check
+
+  test('FFmpeg really has the codecs the registry claims', () async {
+    // Asking the binary directly, rather than trusting a hand-written table.
+    // This is what catches a format whose decoder simply is not in this build
+    // — the failure mode that made farbfeld, libgsm and 8SVX read-only.
+    final decoders = await _ffmpegList('-decoders');
+    final encoders = await _ffmpegList('-encoders');
+    expect(decoders, isNotEmpty, reason: 'could not read the decoder list');
+    expect(encoders, isNotEmpty, reason: 'could not read the encoder list');
+
+    // Formats whose media type FFmpeg does not own, or which the registry
+    // deliberately routes elsewhere.
+    const notFfmpeg = {Family.document, Family.data, Family.archive,
+        Family.ebook, Family.subtitle};
+
+    final missing = <String>[];
+    for (final f in FormatRegistry.all) {
+      if (notFfmpeg.contains(f.family)) continue;
+      // Container extensions do not map one-to-one onto codec names, so only
+      // the formats named after their codec can be checked this way.
+      final codecs = _codecNamesFor(f.ext);
+      if (codecs == null) continue;
+      if (f.read && !codecs.any(decoders.contains)) {
+        missing.add('decode ${f.ext} (none of $codecs)');
+      }
+      if (f.write && !codecs.any(encoders.contains)) {
+        missing.add('encode ${f.ext} (none of $codecs)');
+      }
+    }
+
+    expect(
+      missing,
+      isEmpty,
+      reason: 'registry claims codecs this build lacks:\n${missing.join('\n')}',
+    );
+  }, timeout: const Timeout(Duration(minutes: 5)));
+
   // --------------------------------------------------------------- summary
 
   test('the whole matrix succeeded', () {
@@ -207,6 +245,51 @@ void debugPrintMatrixReport({
     // ignore: avoid_print
     print('  FAIL ${e.key}: ${e.value}');
   }
+}
+
+/// Codec names for the formats that are named after a codec rather than a
+/// container. Containers are covered by the round-trip tests instead.
+Set<String>? _codecNamesFor(String ext) => const {
+      // A format can be served by more than one codec name depending on how
+      // FFmpeg was built (libwebp vs webp, libjxl vs jpegxl), so any match
+      // counts. What matters is that *something* can handle it.
+      'psd': {'psd'},
+      'jxl': {'libjxl', 'jpegxl'},
+      'dds': {'dds'},
+      'xpm': {'xpm'},
+      'qoi': {'qoi'},
+      'exr': {'exr'},
+      'hdr': {'hdr', 'radiance'},
+      'pcx': {'pcx'},
+      'dpx': {'dpx'},
+      'sgi': {'sgi'},
+      'webp': {'libwebp', 'libwebp_anim', 'webp'},
+      'avif': {'libaom-av1', 'av1'},
+      'apng': {'apng'},
+      'wbmp': {'wbmp'},
+      'xbm': {'xbm'},
+      'xwd': {'xwd'},
+      'flac': {'flac'},
+      'alac': {'alac'},
+      'tta': {'tta'},
+      'ape': {'ape'},
+      'shn': {'shorten'},
+      'mpc': {'mpc7', 'mpc8', 'musepack7', 'musepack8'},
+      'wma': {'wmav2', 'wmav1'},
+      'opus': {'libopus', 'opus'},
+    }[ext];
+
+/// Runs `ffmpeg -decoders` / `-encoders` and returns the reported names.
+Future<Set<String>> _ffmpegList(String flag) async {
+  final session = await FFmpegKit.executeWithArguments(['-hide_banner', flag]);
+  final out = await session.getAllLogsAsString() ?? '';
+  final names = <String>{};
+  for (final line in const LineSplitter().convert(out)) {
+    // Rows look like " V..... h264   H.264 ..."; the second column is the name.
+    final m = RegExp(r'^\s*[A-Z.]{6}\s+(\S+)').firstMatch(line);
+    if (m != null) names.add(m.group(1)!);
+  }
+  return names;
 }
 
 /// Generates a fixture with FFmpeg directly. The engine converts between files;

@@ -22,6 +22,7 @@ class ConvertOptions {
     this.stripMetadata = false,
     this.pdfPageRange,
     this.pdfDpi = 150,
+    this.maxEdge,
   });
 
   /// Encoder quality 1-100 for lossy image targets.
@@ -45,6 +46,11 @@ class ConvertOptions {
   final String? pdfPageRange;
   final int pdfDpi;
 
+  /// A ceiling on the longest edge, never an upscale. Used internally where an
+  /// unbounded bitmap would be a memory problem — embedding a photo in a PDF,
+  /// or rendering a preview thumbnail.
+  final int? maxEdge;
+
   ConvertOptions copyWith({
     int? quality,
     int? width,
@@ -56,6 +62,7 @@ class ConvertOptions {
     bool? stripMetadata,
     String? pdfPageRange,
     int? pdfDpi,
+    int? maxEdge,
   }) {
     return ConvertOptions(
       quality: quality ?? this.quality,
@@ -68,6 +75,7 @@ class ConvertOptions {
       stripMetadata: stripMetadata ?? this.stripMetadata,
       pdfPageRange: pdfPageRange ?? this.pdfPageRange,
       pdfDpi: pdfDpi ?? this.pdfDpi,
+      maxEdge: maxEdge ?? this.maxEdge,
     );
   }
 }
