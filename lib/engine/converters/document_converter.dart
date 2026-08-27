@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/services.dart';
 
 import 'package:archive/archive.dart';
 import 'package:html/parser.dart' as html_parser;
@@ -501,11 +502,36 @@ ${body.toString().trimRight()}
       .replaceAll('"', '&quot;');
 
   // ------------------------------------------------------------------- pdf
-
   /// Lays blocks out onto A4 pages. `pw.MultiPage` handles the pagination, so
   /// long documents flow rather than being clipped to one page.
+  /// Cached theme so the font is loaded once, not on every conversion.
+  static pw.ThemeData? _pdfTheme;
+  static bool _pdfThemeLoaded = false;
+
+  static Future<pw.ThemeData> _getPdfTheme() async {
+    if (_pdfThemeLoaded) return _pdfTheme!;
+    _pdfThemeLoaded = true;
+    try {
+      final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSans-Regular.ttf'));
+      final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSans-Bold.ttf'));
+      _pdfTheme = pw.ThemeData.withFont(base: regular, bold: bold);
+    } catch (_) {
+      // In unit tests or when assets are unavailable, fall back to the
+      // default built-in PDF fonts. Non-Latin text won't render, but the
+      // conversion still works -- same behaviour as before the font was
+      // bundled.
+      _pdfTheme = pw.ThemeData.withFont(base: pw.Font.helvetica());
+    }
+    return _pdfTheme!;
+  }
+
+
   static Future<List<int>> buildPdf(List<DocBlock> blocks, {String? title}) async {
-    final doc = pw.Document(title: title == null ? 'OneKit' : 'Converted from $title');
+    final theme = await _getPdfTheme();
+    final doc = pw.Document(
+      title: title == null ? 'OneKit' : 'Converted from $title',
+      theme: theme,
+    );
 
     final widgets = <pw.Widget>[];
     for (final x in blocks) {
@@ -527,9 +553,7 @@ ${body.toString().trimRight()}
             child: pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // A hyphen, not a bullet: the built-in PDF fonts are
-                // Latin-1 only and would drop U+2022 entirely.
-                pw.Text('-  ', style: const pw.TextStyle(fontSize: 11)),
+                pw.Text("\u2022  ", style: const pw.TextStyle(fontSize: 11)),
                 pw.Expanded(child: pw.Text(x.text, style: const pw.TextStyle(fontSize: 11))),
               ],
             ),

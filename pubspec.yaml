@@ -55,6 +55,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icon/
+    - assets/fonts/
 
 flutter_launcher_icons:
   android: "ic_launcher"
