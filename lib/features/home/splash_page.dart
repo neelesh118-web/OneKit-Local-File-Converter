@@ -42,13 +42,14 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _intro.forward();
     _go();
   }
 
   Future<void> _go() async {
-    // Long enough to read the wordmark, short enough not to feel like a gate.
-    await Future<void>.delayed(const Duration(milliseconds: 2100));
+    // Leave as soon as the intro has actually played, rather than sitting on a
+    // fixed timer. The old unconditional 2.1s delay was ~700ms of dead time
+    // after the animation had already settled, on every single launch.
+    await _intro.forward().orCancel.catchError((_) {});
     if (mounted) context.go('/');
   }
 

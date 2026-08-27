@@ -8,6 +8,19 @@ import '../format.dart';
 import '../job.dart';
 import 'converter.dart';
 
+/// What a single ffprobe pass tells us about an input file.
+///
+/// The duration drives the honest progress percentage. The codec names decide
+/// whether the streams can be copied into the target container rather than
+/// re-encoded — the difference between a second and several minutes.
+class _Probe {
+  const _Probe({this.duration, this.videoCodec, this.audioCodec});
+
+  final Duration? duration;
+  final String? videoCodec;
+  final String? audioCodec;
+}
+
 /// The workhorse. FFmpeg covers audio, video, and the long tail of image
 /// formats the pure-Dart decoder cannot touch (AVIF, HEIC, JP2, QOI, ...).
 ///
@@ -34,17 +47,14 @@ class FfmpegConverter extends FileConverter {
     r.cancel.throwIfCancelled();
 
     final hasTimeline = _timelineFamilies.contains(r.from.family);
-    Duration? duration;
-    if (hasTimeline) {
-      duration = await _probeDuration(r.inputPath);
-    }
+    final probe = hasTimeline ? await _probe(r.inputPath) : const _Probe();
 
     // Without a duration there is nothing honest to base a percentage on.
-    final totalMs = duration?.inMilliseconds ?? 0;
+    final totalMs = probe.duration?.inMilliseconds ?? 0;
     final canReportPercent = totalMs > 0;
     r.onProgress(0, indeterminate: !canReportPercent);
 
-    final args = _buildArgs(r);
+    final args = _buildArgs(r, probe);
 
     final completer = Completer<void>();
     var sessionId = 0;
@@ -93,22 +103,102 @@ class FfmpegConverter extends FileConverter {
     return completer.future;
   }
 
-  static Future<Duration?> _probeDuration(String path) async {
+  /// What ffprobe tells us about the input. The duration drives the progress
+  /// percentage; the codec names decide whether the streams can simply be
+  /// copied into the new container instead of re-encoded.
+  static Future<_Probe> _probe(String path) async {
     try {
       final session = await FFprobeKit.getMediaInformation(path);
-      final raw = session.getMediaInformation()?.getDuration();
-      if (raw == null) return null;
-      final seconds = double.tryParse(raw);
-      if (seconds == null || seconds <= 0) return null;
-      return Duration(milliseconds: (seconds * 1000).round());
+      final info = session.getMediaInformation();
+      if (info == null) return const _Probe();
+
+      Duration? duration;
+      final raw = info.getDuration();
+      final seconds = raw == null ? null : double.tryParse(raw);
+      if (seconds != null && seconds > 0) {
+        duration = Duration(milliseconds: (seconds * 1000).round());
+      }
+
+      String? video;
+      String? audio;
+      for (final stream in info.getStreams()) {
+        final type = stream.getType();
+        final codec = stream.getCodec();
+        if (codec == null) continue;
+        if (type == 'video' && video == null) {
+          // Cover art is stored as a video stream; it is not the movie.
+          if (!_coverArtCodecs.contains(codec)) video = codec;
+        } else if (type == 'audio' && audio == null) {
+          audio = codec;
+        }
+      }
+      return _Probe(duration: duration, videoCodec: video, audioCodec: audio);
     } catch (_) {
-      return null;
+      return const _Probe();
     }
   }
 
+  /// Still-image codecs that show up as a video stream on audio files.
+  static const _coverArtCodecs = {'mjpeg', 'png', 'bmp', 'gif'};
+
+  /// Codecs each container can carry without re-encoding. Only the mappings
+  /// worth taking are listed — an unlisted target simply re-encodes as before.
+  static const _containerVideoCodecs = <String, Set<String>>{
+    'mp4': {'h264', 'hevc', 'mpeg4', 'av1'},
+    'm4v': {'h264', 'hevc', 'mpeg4'},
+    'mov': {'h264', 'hevc', 'mpeg4', 'prores'},
+    '3gp': {'h264', 'mpeg4'},
+    '3g2': {'h264', 'mpeg4'},
+    'mkv': {'h264', 'hevc', 'mpeg4', 'av1', 'vp8', 'vp9', 'theora', 'mpeg2video'},
+    'webm': {'vp8', 'vp9', 'av1'},
+    'ts': {'h264', 'hevc', 'mpeg2video'},
+    'flv': {'h264', 'flv1'},
+    'f4v': {'h264'},
+    'avi': {'mpeg4', 'h264', 'mjpeg'},
+    'asf': {'msmpeg4v3', 'wmv2'},
+    'mpg': {'mpeg1video', 'mpeg2video'},
+    'mpeg': {'mpeg1video', 'mpeg2video'},
+    'ogv': {'theora'},
+  };
+
+  static const _containerAudioCodecs = <String, Set<String>>{
+    'mp4': {'aac', 'mp3', 'alac', 'ac3'},
+    'm4v': {'aac', 'mp3'},
+    'm4a': {'aac', 'alac'},
+    'mov': {'aac', 'mp3', 'alac', 'pcm_s16le'},
+    '3gp': {'aac', 'amr_nb'},
+    '3g2': {'aac', 'amr_nb'},
+    'mkv': {'aac', 'mp3', 'flac', 'opus', 'vorbis', 'ac3', 'eac3', 'dts', 'pcm_s16le'},
+    'mka': {'aac', 'mp3', 'flac', 'opus', 'vorbis', 'ac3'},
+    'webm': {'opus', 'vorbis'},
+    'ts': {'aac', 'mp3', 'ac3'},
+    'flv': {'aac', 'mp3'},
+    'f4v': {'aac'},
+    'avi': {'mp3', 'ac3', 'pcm_s16le'},
+    'mp3': {'mp3'},
+    'flac': {'flac'},
+    'ogg': {'vorbis', 'opus'},
+    'oga': {'vorbis', 'opus', 'flac'},
+    'opus': {'opus'},
+    'wav': {'pcm_s16le', 'pcm_s24le'},
+    'aac': {'aac'},
+    'adts': {'aac'},
+    'ac3': {'ac3'},
+    'wv': {'wavpack'},
+  };
+
+  /// Whether the already-encoded streams can be dropped straight into the new
+  /// container. Copying is both instant and lossless, so it is always the
+  /// better answer when it is available.
+  static bool _canCopyVideo(String? codec, FileFormat to) =>
+      codec != null && (_containerVideoCodecs[to.ext]?.contains(codec) ?? false);
+
+  static bool _canCopyAudio(String? codec, FileFormat to) =>
+      codec != null && (_containerAudioCodecs[to.ext]?.contains(codec) ?? false);
+
   /// Builds the argument vector. Arguments are passed as a list, never as a
   /// joined string, so paths containing spaces or quotes cannot break out.
-  static List<String> _buildArgs(ConvertRequest r) {
+  static List<String> _buildArgs(ConvertRequest r, [_Probe probe = const _Probe()]) {
     final o = r.options;
     final args = <String>['-hide_banner', '-nostdin', '-y'];
 
@@ -123,6 +213,21 @@ class FfmpegConverter extends FileConverter {
     if (r.to.family == Family.audio) {
       // Drop video streams so cover art cannot derail an audio-only muxer.
       args.addAll(['-vn', '-map', '0:a:0?']);
+
+      // If the encoded audio already suits the target container, copy it: an
+      // instant, bit-exact extraction rather than a lossy re-encode. Only when
+      // the user has not asked for a different bitrate or sample rate, since
+      // honouring those requires actually re-encoding.
+      final untouched = o.audioBitrateKbps == null && o.sampleRate == null;
+      if (untouched && _canCopyAudio(probe.audioCodec, r.to)) {
+        args.addAll(['-c:a', 'copy']);
+        if (o.stripMetadata) args.addAll(['-map_metadata', '-1']);
+        final forcedAudio = _forcedFormat[r.to.ext];
+        if (forcedAudio != null) args.addAll(['-f', forcedAudio]);
+        args.add(r.outputPath);
+        return args;
+      }
+
       final br = o.audioBitrateKbps;
       if (br != null && _lossyAudio.contains(r.to.ext)) {
         args.addAll(['-b:a', '${br}k']);
@@ -142,8 +247,37 @@ class FfmpegConverter extends FileConverter {
       // FFmpeg refuses its own experimental encoders without this.
       if (_experimentalCodecs.contains(codec)) args.addAll(['-strict', '-2']);
     } else if (r.to.family == Family.video) {
+      // The big win: a container change between two formats that already hold
+      // the same codec is a remux, not a transcode. MKV->MP4 with H.264 inside
+      // goes from minutes to about a second, and loses nothing.
+      final wantsReencode = o.width != null ||
+          o.height != null ||
+          o.videoCrf != null ||
+          o.fps != null ||
+          _fixedGeometry.contains(r.to.ext);
+      final copyVideo = !wantsReencode && _canCopyVideo(probe.videoCodec, r.to);
+      final copyAudio = !wantsReencode && _canCopyAudio(probe.audioCodec, r.to);
+
+      if (copyVideo) {
+        args.addAll(['-c:v', 'copy']);
+        // The audio may still need converting even when the video can be
+        // copied — a WebM's Opus track cannot go into an MP4, for instance.
+        if (copyAudio) {
+          args.addAll(['-c:a', 'copy']);
+        } else {
+          args.addAll(['-c:a', _remuxAudioCodec[r.to.ext] ?? 'aac']);
+        }
+        if (_mp4Family.contains(r.to.ext)) args.addAll(['-movflags', '+faststart']);
+        if (o.stripMetadata) args.addAll(['-map_metadata', '-1']);
+        final forcedRemux = _forcedFormat[r.to.ext];
+        if (forcedRemux != null) args.addAll(['-f', forcedRemux]);
+        args.add(r.outputPath);
+        return args;
+      }
+
       final vcodec = _videoCodec[r.to.ext];
       if (vcodec != null) args.addAll(['-c:v', vcodec]);
+      if (copyAudio) args.addAll(['-c:a', 'copy']);
       if (o.videoCrf != null && _crfCodecs.contains(vcodec)) {
         args.addAll(['-crf', '${o.videoCrf}']);
       }
@@ -285,6 +419,25 @@ class FfmpegConverter extends FileConverter {
 
   /// Containers that must carry AAC audio regardless of what came in.
   static const _needsAacAudio = {'mp4', 'm4v', 'mov', 'f4v', 'flv', 'ts'};
+
+  /// MP4-family containers, which benefit from a relocated moov atom so the
+  /// file starts playing before it has finished downloading.
+  static const _mp4Family = {'mp4', 'm4v', 'mov', '3gp', '3g2', 'f4v'};
+
+  /// Targets with a mandated frame size or rate, so a copy is never valid.
+  static const _fixedGeometry = {'dv', 'mxf', '3gp', '3g2'};
+
+  /// When the video is copied but the audio cannot be, this is what the audio
+  /// becomes — the codec each container is happiest carrying.
+  static const _remuxAudioCodec = {
+    'mkv': 'aac',
+    'webm': 'libopus',
+    'ogv': 'libvorbis',
+    'avi': 'libmp3lame',
+    'asf': 'libmp3lame',
+    'mpg': 'mp2',
+    'mpeg': 'mp2',
+  };
 
   static const _videoCodec = {
     'mp4': 'libx264',

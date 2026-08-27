@@ -38,6 +38,12 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
+
+        ndk {
+            // Real phones only. x86_64 is emulator territory and cost 76.7 MB
+            // of the 246 MB of native libraries in the universal APK.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     signingConfigs {
@@ -69,9 +75,12 @@ android {
 
     packaging {
         jniLibs {
-            // ffmpeg ships large native libraries; extracting them keeps
-            // start-up predictable across OEM loaders.
-            useLegacyPackaging = true
+            // Modern packaging: the .so files are page-aligned and mapped
+            // straight out of the APK. Legacy packaging made the installer
+            // extract a second uncompressed copy of all ~250 MB into
+            // /data/app, roughly doubling on-device footprint. The OEM-loader
+            // concern that justified it does not apply at minSdk 24.
+            useLegacyPackaging = false
         }
         resources {
             excludes += setOf(

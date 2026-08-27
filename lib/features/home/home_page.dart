@@ -61,12 +61,17 @@ class _HomePageState extends State<HomePage> {
     if (mounted) setState(() => _favourites = ids);
   }
 
+  /// Pair lookup built once for the whole app, not per build. This used to
+  /// allocate a ~5,900-entry map every time HomePage rebuilt.
+  static final Map<String, ConversionPair> _byId = {
+    for (final p in FormatRegistry.pairs) p.id: p,
+  };
+
   List<ConversionPair> get _quickPairs {
     final ids = <String>{..._favourites, ..._defaultPairs}.take(12);
-    final byId = {for (final p in FormatRegistry.pairs) p.id: p};
     return [
       for (final id in ids)
-        if (byId[id] != null) byId[id]!,
+        if (_byId[id] != null) _byId[id]!,
     ];
   }
 

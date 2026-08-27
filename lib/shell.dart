@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
-import 'core/data/settings_store.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/starfield.dart';
 
@@ -30,7 +28,6 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final starfieldOn = context.select<SettingsStore, bool>((s) => s.starfieldEnabled);
 
     return Scaffold(
       backgroundColor: t.background,
@@ -39,7 +36,7 @@ class AppShell extends StatelessWidget {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (starfieldOn) const Starfield(density: 1.0, speed: 1.0),
+          const Starfield(density: 1.0, speed: 1.0),
           // SafeArea keeps page content clear of the notch and status bar; the
           // bottom edge is handled by the nav bar instead.
           SafeArea(bottom: false, child: child),

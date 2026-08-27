@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -30,7 +31,16 @@ class PulseHalo extends StatefulWidget {
 
 class _PulseHaloState extends State<PulseHalo> with SingleTickerProviderStateMixin {
   late final AnimationController _c =
-      AnimationController(vsync: this, duration: widget.period)..repeat();
+      AnimationController(vsync: this, duration: widget.period);
+
+  @override
+  void initState() {
+    super.initState();
+    // Honoured on the first build too. Previously `active: false` still
+    // animated until some unrelated rebuild happened to arrive, so a failed
+    // conversion's halo pulsed forever.
+    if (widget.active) _c.repeat();
+  }
 
   @override
   void didUpdateWidget(covariant PulseHalo old) {
@@ -115,6 +125,9 @@ class PulseProgress extends StatefulWidget {
   });
 
   /// 0.0 - 1.0. Real progress reported by the engine, never a fake timer.
+  ///
+  /// Prefer passing a job's `progressNotifier` through [PulseProgress.listen]
+  /// so progress updates rebuild this dial alone.
   final double progress;
   final double size;
   final String? label;
@@ -124,6 +137,36 @@ class PulseProgress extends StatefulWidget {
 
   @override
   State<PulseProgress> createState() => _PulseProgressState();
+}
+
+/// Binds a dial to a job's progress listenable, so a running conversion
+/// rebuilds ~200 logical pixels rather than the whole screen.
+class PulseProgressListener extends StatelessWidget {
+  const PulseProgressListener({
+    super.key,
+    required this.progress,
+    this.size = 200,
+    this.label,
+    this.indeterminate = false,
+  });
+
+  final ValueListenable<double> progress;
+  final double size;
+  final String? label;
+  final bool indeterminate;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<double>(
+      valueListenable: progress,
+      builder: (context, value, _) => PulseProgress(
+        progress: value,
+        size: size,
+        label: label,
+        indeterminate: indeterminate,
+      ),
+    );
+  }
 }
 
 class _PulseProgressState extends State<PulseProgress> with SingleTickerProviderStateMixin {

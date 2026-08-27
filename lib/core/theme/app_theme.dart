@@ -103,8 +103,13 @@ class AppTheme {
   static const double radiusSmall = 12;
   static const double gutter = 20;
 
-  static ThemeData dark() => _build(OneKitTokens.dark);
-  static ThemeData light() => _build(OneKitTokens.light);
+  /// Built once. These were reconstructed on every settings change, and each
+  /// new ThemeData identity invalidates every `Theme.of` dependent in the tree.
+  static final ThemeData darkTheme = _build(OneKitTokens.dark);
+  static final ThemeData lightTheme = _build(OneKitTokens.light);
+
+  static ThemeData dark() => darkTheme;
+  static ThemeData light() => lightTheme;
 
   static ThemeData _build(OneKitTokens t) {
     final scheme = ColorScheme(

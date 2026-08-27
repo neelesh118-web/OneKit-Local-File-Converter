@@ -81,6 +81,12 @@ class ConversionEngine {
       final outPath = await _uniquePath(dir, job.baseName, job.target.ext);
 
       final extras = <String>[];
+      // Converters report as fast as their backend does — ffmpeg's statistics
+      // callback can fire far more often than the screen refreshes. Coalesce
+      // to ~20 Hz so the UI is never asked to do more work than it can show.
+      var lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
+      const minGap = Duration(milliseconds: 50);
+
       await converter.convert(ConvertRequest(
         inputPath: job.sourcePath,
         outputPath: outPath,
@@ -90,11 +96,18 @@ class ConversionEngine {
         cancel: cancel,
         extraOutputs: extras,
         onProgress: (value, {bool indeterminate = false}) {
-          job.indeterminate = indeterminate;
           // Progress must never go backwards; ffmpeg occasionally reports a
           // stale statistic after a seek.
           final clamped = value.clamp(0.0, 1.0);
-          if (clamped >= job.progress || indeterminate) job.progress = clamped;
+          if (clamped < job.progress && !indeterminate) return;
+
+          final now = DateTime.now();
+          final isEdge = clamped >= 1.0 || job.indeterminate != indeterminate;
+          if (!isEdge && now.difference(lastEmit) < minGap) return;
+          lastEmit = now;
+
+          job.indeterminate = indeterminate;
+          job.progress = clamped;
           onUpdate?.call();
         },
       ));

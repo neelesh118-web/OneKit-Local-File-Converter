@@ -1,14 +1,18 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../data/settings_store.dart';
 import '../theme/app_theme.dart';
 
 /// The signature OneKit background: monochrome stars drifting downward, each
 /// breathing on its own phase so the whole field pulses without ever syncing up.
 ///
-/// The painter is driven by a single controller and wrapped in a
-/// [RepaintBoundary], so it repaints in isolation from the page content.
+/// It repaints on every frame by construction, so it is deliberately cheap:
+/// one reused [Paint], a precomputed colour ramp instead of a per-star alpha
+/// blend, and a single draw call per star. It also stops itself when it is not
+/// being looked at — covered by another route, or the app in the background.
 class Starfield extends StatefulWidget {
   const Starfield({
     super.key,
@@ -29,7 +33,8 @@ class Starfield extends StatefulWidget {
   State<Starfield> createState() => _StarfieldState();
 }
 
-class _StarfieldState extends State<Starfield> with SingleTickerProviderStateMixin {
+class _StarfieldState extends State<Starfield>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _controller;
   List<_Star> _stars = const [];
   Size _lastSize = Size.zero;
@@ -37,11 +42,17 @@ class _StarfieldState extends State<Starfield> with SingleTickerProviderStateMix
   /// Smoothed speed so changes (idle -> converting) ease instead of snapping.
   double _speed = 1.0;
 
+  /// Reasons the field is currently not worth animating.
+  bool _backgrounded = false;
+  bool _covered = false;
+
   @override
   void initState() {
     super.initState();
     _speed = widget.speed;
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 60))..repeat();
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 60))
+      ..repeat();
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
@@ -50,9 +61,31 @@ class _StarfieldState extends State<Starfield> with SingleTickerProviderStateMix
     if (old.density != widget.density) _lastSize = Size.zero;
   }
 
-  /// Eases the field toward the requested speed. Called once per frame from the
-  /// painter's builder, so a change (idle -> converting) glides even though the
-  /// parent does not rebuild again.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _backgrounded = state != AppLifecycleState.resumed;
+    _syncRunning();
+  }
+
+  /// Runs the controller only while the field can actually be seen. A stopped
+  /// controller schedules no frames at all, which is the whole point.
+  void _syncRunning() {
+    final shouldRun = !_backgrounded && !_covered;
+    if (shouldRun && !_controller.isAnimating) {
+      _controller.repeat();
+    } else if (!shouldRun && _controller.isAnimating) {
+      _controller.stop(canceled: false);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// Eases the field toward the requested speed, once per frame.
   void _tickSpeed() {
     final target = widget.speed;
     if ((target - _speed).abs() < 0.005) {
@@ -62,18 +95,13 @@ class _StarfieldState extends State<Starfield> with SingleTickerProviderStateMix
     _speed += (target - _speed) * 0.06;
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
   void _ensureStars(Size size) {
     if (size == _lastSize || size.isEmpty) return;
     _lastSize = size;
     final area = size.width * size.height;
-    // ~1 star per 5200 logical px², clamped so phones and tablets both feel right.
-    final count = (area / 5200 * widget.density).round().clamp(28, 160);
+    // ~1 star per 6000 logical px², clamped so phones and tablets both feel
+    // right. The ceiling is what bounds the per-frame draw cost.
+    final count = (area / 6000 * widget.density).round().clamp(24, 110);
     final rnd = math.Random(20260826);
     _stars = List.generate(count, (i) {
       final depth = rnd.nextDouble(); // 0 = far/slow/small, 1 = near/fast/big
@@ -93,6 +121,22 @@ class _StarfieldState extends State<Starfield> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
+
+    // Honoured here rather than at each call site: the splash, pairs and about
+    // screens each built their own field and silently ignored the setting.
+    if (!context.select<SettingsStore, bool>((s) => s.starfieldEnabled)) {
+      return widget.child ?? const SizedBox.shrink();
+    }
+
+    // A route pushed on top of this one means the field is not visible; the
+    // shell's field would otherwise keep animating behind every pushed page.
+    final covered = ModalRoute.of(context)?.isCurrent == false;
+    if (covered != _covered) {
+      _covered = covered;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncRunning();
+      });
+    }
 
     return Stack(
       fit: StackFit.expand,
@@ -160,9 +204,27 @@ class _StarfieldPainter extends CustomPainter {
   final Color color;
   final double speed;
 
+  /// Alpha is quantised into this many steps and the colours cached, so a
+  /// frame does lookups instead of ~100 Color blends.
+  static const _rampSteps = 24;
+  static Color? _rampColor;
+  static late List<Color> _ramp;
+
+  static List<Color> _rampFor(Color c) {
+    if (_rampColor == c) return _ramp;
+    _rampColor = c;
+    _ramp = List<Color>.generate(
+      _rampSteps,
+      (i) => c.withValues(alpha: (i + 1) / _rampSteps * 0.68),
+    );
+    return _ramp;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..style = PaintingStyle.fill;
+    final ramp = _rampFor(color);
+    final streaking = speed > 1.4;
 
     for (final s in stars) {
       // Wrap vertically so the field never runs out of stars.
@@ -173,9 +235,9 @@ class _StarfieldPainter extends CustomPainter {
       final opacity = (0.10 + 0.55 * twinkle) * (0.35 + s.depth * 0.65);
       final r = s.radius * (0.82 + 0.28 * twinkle);
 
-      paint.color = color.withValues(alpha: opacity.clamp(0.0, 1.0));
+      paint.color = ramp[(opacity * _rampSteps).clamp(0, _rampSteps - 1).toInt()];
 
-      if (s.streak && speed > 1.4) {
+      if (s.streak && streaking) {
         // Fast foreground stars stretch into short trails while converting.
         final tail = r * 6 * (speed - 1.0);
         canvas.drawRRect(
@@ -187,12 +249,6 @@ class _StarfieldPainter extends CustomPainter {
         );
       } else {
         canvas.drawCircle(Offset(x, y), r, paint);
-      }
-
-      // A soft halo on the nearest stars gives the field depth.
-      if (s.depth > 0.7) {
-        paint.color = color.withValues(alpha: (opacity * 0.16).clamp(0.0, 1.0));
-        canvas.drawCircle(Offset(x, y), r * 3.4, paint);
       }
     }
   }

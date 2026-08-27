@@ -61,6 +61,7 @@ class _BatchPageState extends State<BatchPage> {
 
   @override
   void dispose() {
+    _overallProgress.dispose();
     _cancel?.cancel();
     _extracted?.delete(recursive: true).catchError((_) => Directory(''));
     super.dispose();
@@ -69,6 +70,7 @@ class _BatchPageState extends State<BatchPage> {
   // ------------------------------------------------------------ selection
 
   void _addPaths(List<String> paths, {String? label}) {
+    _commonTargetsCache = null;
     for (final path in paths) {
       if (_items.any((i) => i.path == path)) continue;
       final format = FormatRegistry.byExt(p.extension(path));
@@ -85,8 +87,15 @@ class _BatchPageState extends State<BatchPage> {
     if (!_commonTargets().any((f) => f.ext == target.ext)) _target = null;
   }
 
+  /// Cached result of [_computeCommonTargets]. The queue changes rarely; build
+  /// runs many times a second while a conversion reports progress.
+  List<FileFormat>? _commonTargetsCache;
+
   /// Targets every selected file can actually be converted into.
-  List<FileFormat> _commonTargets() {
+  List<FileFormat> _commonTargets() =>
+      _commonTargetsCache ??= _computeCommonTargets();
+
+  List<FileFormat> _computeCommonTargets() {
     final sources = _items.map((i) => i.format).whereType<FileFormat>().toSet();
     if (sources.isEmpty) return const [];
     List<FileFormat>? common;
@@ -200,9 +209,9 @@ class _BatchPageState extends State<BatchPage> {
         job,
         cancel: cancel,
         outputDirectory: outputDir,
-        onUpdate: () {
-          if (mounted) setState(() {});
-        },
+        // Per-file rows and the overall dial both listen to the job's
+        // notifier, so a progress tick no longer rebuilds the whole queue.
+        onUpdate: _onJobTick,
       );
       await HistoryStore.instance.record(job);
       if (job.status == JobStatus.done) succeeded++;
@@ -224,6 +233,15 @@ class _BatchPageState extends State<BatchPage> {
   void _cancelAll() {
     _cancel?.cancel();
     HapticFeedback.lightImpact();
+  }
+
+  /// Overall batch progress, driven straight from the per-job notifiers so the
+  /// page itself does not rebuild on every tick.
+  final ValueNotifier<double> _overallProgress = ValueNotifier<double>(0);
+
+  void _onJobTick() {
+    if (!mounted) return;
+    _overallProgress.value = _overall;
   }
 
   /// Overall progress across the queue: finished files plus the live fraction
@@ -311,6 +329,7 @@ class _BatchPageState extends State<BatchPage> {
                 onPressed: () => setState(() {
                   _items.clear();
                   _target = null;
+                  _commonTargetsCache = null;
                 }),
                 icon: const Icon(Icons.delete_sweep_outlined),
               ),
@@ -360,6 +379,8 @@ class _BatchPageState extends State<BatchPage> {
 
   Widget _queue(List<FileFormat> targets) {
     final t = context.tokens;
+    // Computed once per build; it was previously re-scanned three times.
+    final done = _done;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       children: [
@@ -367,7 +388,11 @@ class _BatchPageState extends State<BatchPage> {
           Panel(
             child: Column(
               children: [
-                PulseProgress(progress: _overall, size: 170, label: 'File ${_currentIndex + 1} of ${_items.length}'),
+                PulseProgressListener(
+                  progress: _overallProgress,
+                  size: 170,
+                  label: 'File ${_currentIndex + 1} of ${_items.length}',
+                ),
                 const SizedBox(height: 8),
                 Text(
                   'Converting to ${_target?.upper ?? ''}',
@@ -421,15 +446,29 @@ class _BatchPageState extends State<BatchPage> {
             ),
         ],
         const SectionTitle('Queue'),
-        for (final item in _items)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _ItemRow(
-              item: item,
-              onRemove: _running ? null : () => setState(() => _items.remove(item)),
-            ),
-          ),
-        if (_done.isNotEmpty && !_running) ...[
+        // Virtualised: a 200-file queue used to build every row on every
+        // progress tick.
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _items.length,
+          itemBuilder: (context, i) {
+            final item = _items[i];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _ItemRow(
+                item: item,
+                onRemove: _running
+                    ? null
+                    : () => setState(() {
+                          _items.remove(item);
+                          _commonTargetsCache = null;
+                        }),
+              ),
+            );
+          },
+        ),
+        if (done.isNotEmpty && !_running) ...[
           const SectionTitle('Results'),
           Row(
             children: [
@@ -437,7 +476,7 @@ class _BatchPageState extends State<BatchPage> {
                 child: OutlinedButton.icon(
                   onPressed: _shareAll,
                   icon: const Icon(Icons.ios_share_rounded, size: 18),
-                  label: Text('Share ${_done.length}'),
+                  label: Text('Share ${done.length}'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -500,13 +539,28 @@ class _BatchPageState extends State<BatchPage> {
 }
 
 class _Item {
-  _Item({required this.path, required this.format, this.label});
+  _Item({required this.path, required this.format, this.label})
+      : sizeBytes = _sizeOf(path);
+
   final String path;
   final FileFormat? format;
+
+  /// Read once when the file is queued. Reading it inside build meant a
+  /// synchronous stat per row on every progress tick — hundreds of blocking
+  /// syscalls a second during a batch.
+  final int sizeBytes;
 
   /// Set when the file came out of a ZIP, so the source is visible in the row.
   final String? label;
   ConversionJob? job;
+
+  static int _sizeOf(String path) {
+    try {
+      return File(path).lengthSync();
+    } on FileSystemException {
+      return 0;
+    }
+  }
 }
 
 class _TargetPill extends StatelessWidget {
@@ -576,12 +630,23 @@ class _ItemRow extends StatelessWidget {
                       style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: t.textPrimary),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      _status(context, job, unsupported),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11.5, color: t.textFaint),
-                    ),
+                    if (job != null && job.status == JobStatus.running)
+                      ValueListenableBuilder<double>(
+                        valueListenable: job.progressNotifier,
+                        builder: (context, _, __) => Text(
+                          _status(context, job, unsupported),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11.5, color: t.textFaint),
+                        ),
+                      )
+                    else
+                      Text(
+                        _status(context, job, unsupported),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11.5, color: t.textFaint),
+                      ),
                   ],
                 ),
               ),
@@ -601,9 +666,14 @@ class _ItemRow extends StatelessWidget {
             const SizedBox(height: 10),
             ClipRRect(
               borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: job.indeterminate ? null : job.progress,
-                minHeight: 3,
+              // Listens to the job directly: the page no longer rebuilds on
+              // every tick, so the bar has to drive itself.
+              child: ValueListenableBuilder<double>(
+                valueListenable: job.progressNotifier,
+                builder: (context, value, _) => LinearProgressIndicator(
+                  value: job.indeterminate ? null : value,
+                  minHeight: 3,
+                ),
               ),
             ),
           ],
@@ -614,8 +684,12 @@ class _ItemRow extends StatelessWidget {
 
   String _status(BuildContext context, ConversionJob? job, bool unsupported) {
     if (unsupported) return 'Unsupported file type';
-    final size = File(item.path).existsSync() ? humanBytes(File(item.path).lengthSync()) : '';
-    if (job == null) return [if (item.label != null) 'from ${item.label}', size].join(' · ');
+    final size = item.sizeBytes > 0 ? humanBytes(item.sizeBytes) : '';
+    if (job == null) {
+      return [if (item.label != null) 'from ${item.label}', size]
+          .where((s) => s.isNotEmpty)
+          .join(' · ');
+    }
     return switch (job.status) {
       JobStatus.queued => 'Waiting',
       JobStatus.running => job.indeterminate

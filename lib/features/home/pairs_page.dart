@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -26,6 +28,10 @@ class _PairsPageState extends State<PairsPage> {
       TextEditingController(text: widget.initialQuery ?? '');
   Family? _family;
   late List<ConversionPair> _results;
+  Timer? _debounce;
+
+  /// Compiled once. It used to be rebuilt on every keystroke.
+  static final _separator = RegExp(r'\s*(to|->|→|>)\s*');
 
   /// Only pairs an engine actually claims are listed, so the catalogue can
   /// never advertise something the app would then refuse to run.
@@ -53,23 +59,32 @@ class _PairsPageState extends State<PairsPage> {
   List<ConversionPair> _compute() {
     final q = _controller.text.toLowerCase().trim();
     // "png to jpg", "png>jpg" and "png jpg" all normalise to the same query.
-    final normalized = q.replaceAll(RegExp(r'\s*(to|->|→|>)\s*'), '>');
+    final normalized = q.replaceAll(_separator, '>');
 
     return _runnable.where((p) {
       if (_family != null && p.from.family != _family && p.to.family != _family) return false;
       if (q.isEmpty) return true;
       if (normalized.contains('>')) return p.id.contains(normalized);
-      return p.from.ext.contains(q) ||
-          p.to.ext.contains(q) ||
-          p.from.name.toLowerCase().contains(q) ||
-          p.to.name.toLowerCase().contains(q);
+      // One pass over a prebuilt lowercase key, instead of lowercasing both
+      // format names for all ~5,900 pairs on every keystroke.
+      return p.searchKey.contains(q);
     }).toList();
   }
 
   void _refresh() => setState(() => _results = _compute());
 
+  /// Typing outruns a 5,900-item scan, so filter on a short pause instead of
+  /// on every character.
+  void _refreshDebounced() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 120), () {
+      if (mounted) _refresh();
+    });
+  }
+
   @override
   void dispose() {
+    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -118,7 +133,7 @@ class _PairsPageState extends State<PairsPage> {
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
                   child: TextField(
                     controller: _controller,
-                    onChanged: (_) => _refresh(),
+                    onChanged: (_) => _refreshDebounced(),
                     textInputAction: TextInputAction.search,
                     decoration: InputDecoration(
                       hintText: 'Try "heic to jpg" or "mp4"',
@@ -185,7 +200,7 @@ class _PairsPageState extends State<PairsPage> {
       padding: const EdgeInsets.only(right: 8),
       child: InkWell(
         onTap: () {
-          setState(() => _family = f);
+          _family = f;
           _refresh();
         },
         borderRadius: BorderRadius.circular(100),

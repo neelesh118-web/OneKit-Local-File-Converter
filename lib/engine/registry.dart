@@ -232,10 +232,24 @@ class FormatRegistry {
     return _byExt[e];
   }
 
-  static List<FileFormat> family(Family f) => all.where((x) => x.family == f).toList();
+  /// Formats grouped by family, computed once. `family()` used to re-scan all
+  /// 145 formats on every call, and pair generation alone called it ~290 times.
+  static final Map<Family, List<FileFormat>> _byFamily = () {
+    final m = <Family, List<FileFormat>>{for (final f in Family.values) f: <FileFormat>[]};
+    for (final f in all) {
+      m[f.family]!.add(f);
+    }
+    return {
+      for (final e in m.entries) e.key: List<FileFormat>.unmodifiable(e.value),
+    };
+  }();
 
-  static List<FileFormat> get readable => all.where((f) => f.read).toList();
-  static List<FileFormat> get writable => all.where((f) => f.write).toList();
+  static List<FileFormat> family(Family f) => _byFamily[f] ?? const [];
+
+  static final List<FileFormat> readable =
+      List.unmodifiable(all.where((f) => f.read));
+  static final List<FileFormat> writable =
+      List.unmodifiable(all.where((f) => f.write));
 
   /// Cross-family conversions OneKit implements, as source family -> target
   /// families. These mirror the converters exactly; anything a converter does

@@ -13,13 +13,18 @@ Future<void> main() async {
 
   // Draw behind the status and navigation bars; every screen then insets its
   // own content with SafeArea so nothing ever collides with system chrome.
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // Neither of these needs to gate the first frame, so the orientation lock
+  // runs alongside the preference load rather than before it.
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-  final settings = await SettingsStore.load();
+  final results = await Future.wait([
+    SettingsStore.load(),
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]),
+  ]);
+  final settings = results.first as SettingsStore;
 
   runApp(
     ChangeNotifierProvider<SettingsStore>.value(

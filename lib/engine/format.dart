@@ -77,11 +77,22 @@ class FileFormat {
 
 /// A single directed conversion, e.g. PNG -> WEBP.
 class ConversionPair {
-  const ConversionPair(this.from, this.to);
+  ConversionPair(this.from, this.to)
+      : id = '${from.ext}>${to.ext}',
+        searchKey = '${from.ext}>${to.ext} '
+            '${from.name.toLowerCase()} ${to.name.toLowerCase()}';
+
   final FileFormat from;
   final FileFormat to;
 
-  String get id => '${from.ext}>${to.ext}';
+  /// Stored, not computed: it is read once per pair during catalogue
+  /// generation and again on every search keystroke.
+  final String id;
+
+  /// Lowercased haystack matching the whole pair, built once. Searching used
+  /// to allocate two lowercase strings per pair per keystroke — roughly
+  /// 12,000 throwaway strings for a single character typed.
+  final String searchKey;
   String get label => '${from.upper} to ${to.upper}';
   String get shortLabel => '${from.upper} → ${to.upper}';
 

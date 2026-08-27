@@ -55,6 +55,10 @@ class _ConvertPageState extends State<ConvertPage> {
   ConversionJob? _job;
   CancelToken? _cancel;
 
+  /// Mirrors the running job's indeterminate flag. Unlike progress, this
+  /// changes at most a couple of times per job, so a rebuild is fine.
+  bool _indeterminate = false;
+
   @override
   void initState() {
     super.initState();
@@ -98,12 +102,16 @@ class _ConvertPageState extends State<ConvertPage> {
       _phase = _Phase.running;
     });
 
-    // Keep the screen awake for long video jobs, then release it.
     await ConversionEngine.instance.run(
       job,
       cancel: cancel,
+      // No setState here: the dial listens to job.progressNotifier directly,
+      // so a tick repaints ~200px instead of rebuilding the whole screen.
+      // Only the indeterminate flag needs a rebuild, and it changes once.
       onUpdate: () {
-        if (mounted) setState(() {});
+        if (mounted && _indeterminate != job.indeterminate) {
+          setState(() => _indeterminate = job.indeterminate);
+        }
       },
       outputDirectory: context.mounted ? context.read<SettingsStore>().outputDir : null,
     );
@@ -137,7 +145,6 @@ class _ConvertPageState extends State<ConvertPage> {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final starfieldOn = context.select<SettingsStore, bool>((s) => s.starfieldEnabled);
 
     return PopScope(
       canPop: _phase != _Phase.running,
@@ -149,12 +156,11 @@ class _ConvertPageState extends State<ConvertPage> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            if (starfieldOn)
-              Starfield(
-                density: 1.1,
-                // The field visibly accelerates while a conversion runs.
-                speed: _phase == _Phase.running ? 2.6 : 1.0,
-              ),
+            Starfield(
+              density: 1.1,
+              // The field visibly accelerates while a conversion runs.
+              speed: _phase == _Phase.running ? 2.6 : 1.0,
+            ),
             SafeArea(child: _body()),
           ],
         ),
@@ -306,9 +312,9 @@ class _ConvertPageState extends State<ConvertPage> {
       children: [
         PageHeader(title: 'Converting', subtitle: job.pair?.shortLabel),
         const Spacer(),
-        PulseProgress(
-          progress: job.progress,
-          indeterminate: job.indeterminate,
+        PulseProgressListener(
+          progress: job.progressNotifier,
+          indeterminate: _indeterminate,
           size: 240,
           label: job.name,
         ),
@@ -323,7 +329,7 @@ class _ConvertPageState extends State<ConvertPage> {
         ),
         const SizedBox(height: 14),
         Text(
-          job.indeterminate
+          _indeterminate
               ? 'Working — this format has no timeline to measure'
               : 'Everything happens on this device',
           textAlign: TextAlign.center,

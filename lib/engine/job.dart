@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import 'format.dart';
@@ -94,10 +95,20 @@ class ConversionJob {
   JobStatus status = JobStatus.queued;
 
   /// 0.0 - 1.0, reported by the engine. Never synthesised from a timer.
-  double progress = 0;
+  ///
+  /// Exposed as a [ValueNotifier] so the progress dial can rebuild on its own
+  /// without the surrounding page rebuilding with it — a conversion emits
+  /// these many times a second.
+  final ValueNotifier<double> progressNotifier = ValueNotifier<double>(0);
+
+  double get progress => progressNotifier.value;
+  set progress(double v) => progressNotifier.value = v;
 
   /// Set while the engine genuinely cannot report a percentage.
   bool indeterminate = false;
+
+  /// Releases the progress listenable. Safe to call more than once.
+  void dispose() => progressNotifier.dispose();
 
   String? outputPath;
 
