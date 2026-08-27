@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -36,37 +37,51 @@ class ArchiveConverter extends FileConverter {
     r.cancel.throwIfCancelled();
     r.onProgress(0.25, indeterminate: false);
 
-    final fromContainer = containers.contains(r.from.ext);
-    final toContainer = containers.contains(r.to.ext);
+    // Copy the values the worker needs into locals: capturing the request
+    // would drag its callbacks and CancelToken into the isolate message, which
+    // the JIT tolerates and AOT rejects.
+    final fromExt = r.from.ext;
+    final toExt = r.to.ext;
+    final entryName = p.basenameWithoutExtension(r.inputPath);
+
+    r.onProgress(0.35, indeterminate: false);
+    // Compression is heavy and entirely CPU-bound. Run it on a worker so a
+    // 500 MB ZIP does not freeze the interface for the whole conversion.
+    final out = await Isolate.run(() => _repack(bytes, fromExt, toExt, entryName));
+
+    r.cancel.throwIfCancelled();
+    r.onProgress(0.9, indeterminate: false);
+    await File(r.outputPath).writeAsBytes(out, flush: true);
+    r.onProgress(1.0, indeterminate: false);
+  }
+
+  /// Runs on a worker isolate — must touch nothing from the UI thread.
+  static List<int> _repack(
+    Uint8List bytes,
+    String fromExt,
+    String toExt,
+    String entryName,
+  ) {
+    final fromContainer = containers.contains(fromExt);
+    final toContainer = containers.contains(toExt);
 
     if (fromContainer && toContainer) {
-      final archive = _decodeContainer(bytes, r.from.ext);
-      r.cancel.throwIfCancelled();
-      r.onProgress(0.55, indeterminate: false);
-      await File(r.outputPath).writeAsBytes(_encodeContainer(archive, r.to.ext), flush: true);
-    } else if (!fromContainer && !toContainer) {
+      return _encodeContainer(_decodeContainer(bytes, fromExt), toExt);
+    }
+    if (!fromContainer && !toContainer) {
       // Stream to stream: decompress then recompress the raw payload.
-      final raw = _decodeStream(bytes, r.from.ext);
-      r.onProgress(0.6, indeterminate: false);
-      await File(r.outputPath).writeAsBytes(_encodeStream(raw, r.to.ext), flush: true);
-    } else if (fromContainer && !toContainer) {
+      return _encodeStream(_decodeStream(bytes, fromExt), toExt);
+    }
+    if (fromContainer && !toContainer) {
       // Many entries into a single stream: re-pack as TAR first so nothing is
       // lost, then compress that.
-      final archive = _decodeContainer(bytes, r.from.ext);
-      final tar = TarEncoder().encode(archive);
-      r.onProgress(0.6, indeterminate: false);
-      await File(r.outputPath).writeAsBytes(_encodeStream(tar, r.to.ext), flush: true);
-    } else {
-      // Single stream into a container: the payload becomes one entry named
-      // after the source file with its compression suffix removed.
-      final raw = _decodeStream(bytes, r.from.ext);
-      final entryName = p.basenameWithoutExtension(r.inputPath);
-      final archive = Archive()..addFile(ArchiveFile(entryName, raw.length, raw));
-      r.onProgress(0.6, indeterminate: false);
-      await File(r.outputPath).writeAsBytes(_encodeContainer(archive, r.to.ext), flush: true);
+      return _encodeStream(TarEncoder().encode(_decodeContainer(bytes, fromExt)), toExt);
     }
-
-    r.onProgress(1.0, indeterminate: false);
+    // Single stream into a container: the payload becomes one entry named
+    // after the source file with its compression suffix removed.
+    final raw = _decodeStream(bytes, fromExt);
+    final archive = Archive()..addFile(ArchiveFile(entryName, raw.length, raw));
+    return _encodeContainer(archive, toExt);
   }
 
   static Archive _decodeContainer(Uint8List bytes, String ext) {

@@ -8,8 +8,8 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/ads/ads.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/brand.dart';
 import '../../core/widgets/common.dart';
+import '../../core/widgets/file_preview.dart';
 import '../../engine/engine.dart';
 import '../../engine/job.dart';
 import '../../engine/registry.dart';
@@ -243,8 +243,16 @@ class _FilesPageState extends State<FilesPage> {
               ),
             ),
             ListTile(
+              leading: const Icon(Icons.visibility_outlined),
+              title: const Text('Preview here'),
+              onTap: () {
+                Navigator.pop(ctx);
+                PreviewSheet.show(context, file.path, format: format);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.open_in_new_rounded),
-              title: const Text('Open'),
+              title: const Text('Open in another app'),
               onTap: () {
                 Navigator.pop(ctx);
                 OpenFilex.open(file.path);
@@ -302,7 +310,6 @@ class _FileRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final ext = p.extension(entry.file.path).replaceFirst('.', '');
 
     return InkWell(
       onTap: onTap,
@@ -326,7 +333,10 @@ class _FileRow extends StatelessWidget {
                   color: selected ? t.accent : t.textFaint,
                 ),
               ),
-            FormatBadge(ext.isEmpty ? '?' : ext, size: 40),
+            FilePreview(
+              path: entry.file.path,
+              size: 40,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

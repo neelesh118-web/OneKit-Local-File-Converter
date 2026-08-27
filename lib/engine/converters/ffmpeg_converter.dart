@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
@@ -49,12 +50,48 @@ class FfmpegConverter extends FileConverter {
     final hasTimeline = _timelineFamilies.contains(r.from.family);
     final probe = hasTimeline ? await _probe(r.inputPath) : const _Probe();
 
+    // Try the phone's own video encoder first. It is dramatically faster and
+    // far kinder to the battery, but support varies by chipset and some
+    // devices reject inputs they claim to handle — so a failure silently
+    // re-runs the job in software rather than surfacing an error.
+    if (_hardwareCandidate(r, probe)) {
+      try {
+        await _execute(r, _buildArgs(r, probe, true), probe);
+        return;
+      } on ConversionException {
+        if (r.cancel.isCancelled) rethrow;
+        _hardwareBroken.add(r.to.ext);
+      }
+    }
+
+    await _execute(r, _buildArgs(r, probe), probe);
+  }
+
+  /// Targets whose hardware encoder has already failed once this session.
+  /// Retrying it for every file in a batch would waste the whole batch.
+  static final Set<String> _hardwareBroken = <String>{};
+
+  static bool _hardwareCandidate(ConvertRequest r, _Probe probe) {
+    if (!Platform.isAndroid) return false;
+    if (r.to.family != Family.video) return false;
+    if (_hardwareBroken.contains(r.to.ext)) return false;
+    if (!_mediacodecEncoder.containsKey(_videoCodec[r.to.ext])) return false;
+    // A remux does not encode at all, so there is nothing to accelerate.
+    return !_willCopyVideo(r, probe);
+  }
+
+  /// FFmpeg encoders backed by Android's MediaCodec hardware.
+  static const _mediacodecEncoder = {
+    'libx264': 'h264_mediacodec',
+    'libx265': 'hevc_mediacodec',
+  };
+
+  Future<void> _execute(ConvertRequest r, List<String> args, _Probe probe) async {
+
     // Without a duration there is nothing honest to base a percentage on.
     final totalMs = probe.duration?.inMilliseconds ?? 0;
     final canReportPercent = totalMs > 0;
     r.onProgress(0, indeterminate: !canReportPercent);
-
-    final args = _buildArgs(r, probe);
 
     final completer = Completer<void>();
     var sessionId = 0;
@@ -198,7 +235,22 @@ class FfmpegConverter extends FileConverter {
 
   /// Builds the argument vector. Arguments are passed as a list, never as a
   /// joined string, so paths containing spaces or quotes cannot break out.
-  static List<String> _buildArgs(ConvertRequest r, [_Probe probe = const _Probe()]) {
+  /// Whether the video stream will be copied rather than re-encoded.
+  static bool _willCopyVideo(ConvertRequest r, _Probe probe) {
+    final o = r.options;
+    final wantsReencode = o.width != null ||
+        o.height != null ||
+        o.videoCrf != null ||
+        o.fps != null ||
+        _fixedGeometry.contains(r.to.ext);
+    return !wantsReencode && _canCopyVideo(probe.videoCodec, r.to);
+  }
+
+  static List<String> _buildArgs(
+    ConvertRequest r, [
+    _Probe probe = const _Probe(),
+    bool hardware = false,
+  ]) {
     final o = r.options;
     final args = <String>['-hide_banner', '-nostdin', '-y'];
 
@@ -255,7 +307,7 @@ class FfmpegConverter extends FileConverter {
           o.videoCrf != null ||
           o.fps != null ||
           _fixedGeometry.contains(r.to.ext);
-      final copyVideo = !wantsReencode && _canCopyVideo(probe.videoCodec, r.to);
+      final copyVideo = _willCopyVideo(r, probe);
       final copyAudio = !wantsReencode && _canCopyAudio(probe.audioCodec, r.to);
 
       if (copyVideo) {
@@ -275,7 +327,8 @@ class FfmpegConverter extends FileConverter {
         return args;
       }
 
-      final vcodec = _videoCodec[r.to.ext];
+      final soft = _videoCodec[r.to.ext];
+      final vcodec = hardware ? (_mediacodecEncoder[soft] ?? soft) : soft;
       if (vcodec != null) args.addAll(['-c:v', vcodec]);
       if (copyAudio) args.addAll(['-c:a', 'copy']);
       if (o.videoCrf != null && _crfCodecs.contains(vcodec)) {

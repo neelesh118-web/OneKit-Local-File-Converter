@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
@@ -52,7 +53,9 @@ class EbookConverter extends FileConverter {
 
     if (r.to.ext == 'epub') {
       final title = p.basenameWithoutExtension(r.inputPath);
-      await File(r.outputPath).writeAsBytes(_buildEpub(blocks, title), flush: true);
+      // Zipping a whole book is CPU-bound; keep it off the UI isolate.
+      final bytes = await Isolate.run(() => _buildEpub(blocks, title));
+      await File(r.outputPath).writeAsBytes(bytes, flush: true);
     } else if (r.to.ext == 'pdf') {
       await File(r.outputPath).writeAsBytes(await DocumentConverter.buildPdf(blocks), flush: true);
     } else {

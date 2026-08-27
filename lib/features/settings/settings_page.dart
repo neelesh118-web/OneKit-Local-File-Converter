@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/data/history_store.dart';
 import '../../core/data/settings_store.dart';
+import '../../core/preview/preview_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../engine/engine.dart';
@@ -40,6 +41,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _clearCache() async {
+    await PreviewService.instance.clear();
     final dir = await ConversionEngine.tempDir();
     if (await dir.exists()) await dir.delete(recursive: true);
     await _measureCache();

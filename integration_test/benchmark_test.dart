@@ -95,8 +95,11 @@ void main() {
   late String pdf; // 100 page document
 
   test('build realistic fixtures', () async {
+    // Mandelbrot rather than testsrc: the test pattern is flat colour blocks
+    // that compress to almost nothing, which would make this measure zip
+    // speed instead of image decoding. This is ~12 MP of real detail.
     photo = p.join(work.path, 'photo.png');
-    await _ffmpeg(['-f', 'lavfi', '-i', 'testsrc=size=4000x3000', '-frames:v', '1', photo]);
+    await _ffmpeg(['-f', 'lavfi', '-i', 'mandelbrot=size=4000x3000', '-frames:v', '1', photo]);
 
     mp3 = p.join(work.path, 'audio.mp3');
     await _ffmpeg([
@@ -104,10 +107,12 @@ void main() {
       '-c:a', 'libmp3lame', '-b:a', '192k', mp3,
     ]);
 
+    // 10 seconds of 720p. Long enough that a re-encode is clearly slower than
+    // a remux, short enough that the suite finishes on a phone.
     video = p.join(work.path, 'clip.mp4');
     await _ffmpeg([
-      '-f', 'lavfi', '-i', 'testsrc=size=1920x1080:rate=30:duration=30',
-      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=30',
+      '-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=30:duration=10',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=10',
       '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-shortest', video,
     ]);
@@ -183,10 +188,10 @@ void main() {
   test('video: the remux opportunity', () async {
     // Both of these hold an H.264 video stream and AAC audio already. A remux
     // should be near-instant; today both fully re-encode.
-    await time('30s MKV>MP4 (remuxable)', () => viaEngine(mkv, 'mp4'));
-    await time('30s MP4>MKV (remuxable)', () => viaEngine(video, 'mkv'));
-    await time('30s MP4>WEBM (real encode)', () => viaEngine(video, 'webm'));
-    await time('30s MP4>MP3 (audio only)', () => viaEngine(video, 'mp3'));
+    await time('10s MKV>MP4 (remuxable)', () => viaEngine(mkv, 'mp4'));
+    await time('10s MP4>MKV (remuxable)', () => viaEngine(video, 'mkv'));
+    await time('10s MP4>AVI (real encode)', () => viaEngine(video, 'avi'));
+    await time('10s MP4>MP3 (audio only)', () => viaEngine(video, 'mp3'));
   }, timeout: const Timeout(Duration(minutes: 20)));
 
   // ----------------------------------------------------- archive and pdf
@@ -206,11 +211,11 @@ void main() {
     await _ffmpeg(['-f', 'lavfi', '-i', 'testsrc=size=1200x900', '-frames:v', '1', small]);
 
     final sw = Stopwatch()..start();
-    for (var i = 0; i < 40; i++) {
+    for (var i = 0; i < 20; i++) {
       await viaEngine(small, 'jpg');
     }
     sw.stop();
-    results.add(_Result('40x 1MP PNG>JPG serial', sw.elapsed, 0, ok: true));
+    results.add(_Result('20x 1MP PNG>JPG serial', sw.elapsed, 0, ok: true));
   }, timeout: const Timeout(Duration(minutes: 20)));
 }
 

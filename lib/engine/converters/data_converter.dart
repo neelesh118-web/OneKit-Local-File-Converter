@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:csv/csv.dart';
 import 'package:xml/xml.dart';
@@ -31,14 +32,22 @@ class DataConverter extends FileConverter {
     r.cancel.throwIfCancelled();
     r.onProgress(0.4, indeterminate: false);
 
-    final value = parse(text, r.from.ext);
-    r.cancel.throwIfCancelled();
-    r.onProgress(0.7, indeterminate: false);
+    // Locals only, never the request itself: an isolate message cannot carry
+    // the progress callback or the CancelToken under AOT.
+    final fromExt = r.from.ext;
+    final toExt = r.to.ext;
+    // A large CSV or JSON is pure CPU; parsing it inline froze the interface.
+    final out = await Isolate.run(() => transcode(text, fromExt, toExt));
 
-    final out = serialize(value, r.to.ext);
+    r.cancel.throwIfCancelled();
     await File(r.outputPath).writeAsString(out, flush: true);
     r.onProgress(1.0, indeterminate: false);
   }
+
+  /// Parse and re-serialise in one step, so a worker isolate only has to be
+  /// handed two strings.
+  static String transcode(String text, String fromExt, String toExt) =>
+      serialize(parse(text, fromExt), toExt);
 
   // ------------------------------------------------------------------ parse
 

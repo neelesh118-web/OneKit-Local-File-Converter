@@ -12,8 +12,8 @@ import '../../core/ads/ads.dart';
 import '../../core/data/history_store.dart';
 import '../../core/data/settings_store.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/brand.dart';
 import '../../core/widgets/common.dart';
+import '../../core/widgets/file_preview.dart';
 import '../../core/widgets/pulse.dart';
 import '../../engine/converters/converter.dart';
 import '../../engine/engine.dart';
@@ -45,7 +45,10 @@ class _BatchPageState extends State<BatchPage> {
 
   bool _running = false;
   CancelToken? _cancel;
-  int _currentIndex = 0;
+
+  /// Files finished so far. With jobs running concurrently there is no single
+  /// "current" file to point at, so the queue reports completions instead.
+  int _completed = 0;
 
   /// Temp directory holding files extracted from a ZIP, cleaned up on dispose.
   Directory? _extracted;
@@ -179,7 +182,7 @@ class _BatchPageState extends State<BatchPage> {
     setState(() {
       _running = true;
       _cancel = cancel;
-      _currentIndex = 0;
+      _completed = 0;
       for (final i in _items) {
         i.job = null;
       }
@@ -187,24 +190,22 @@ class _BatchPageState extends State<BatchPage> {
 
     final outputDir = context.read<SettingsStore>().outputDir;
     var succeeded = 0;
+    var started = 0;
 
-    for (var i = 0; i < _items.length; i++) {
-      if (cancel.isCancelled) break;
-      final item = _items[i];
-      if (item.format == null) continue;
+    final queue = [
+      for (var i = 0; i < _items.length; i++)
+        if (_items[i].format != null) _items[i],
+    ];
 
+    Future<void> runOne(_Item item, int index) async {
       final job = ConversionJob(
-        id: '${DateTime.now().microsecondsSinceEpoch}_$i',
+        id: '${DateTime.now().microsecondsSinceEpoch}_$index',
         sourcePath: item.path,
         source: item.format,
         target: target,
         options: _options,
       );
-      setState(() {
-        _currentIndex = i;
-        item.job = job;
-      });
-
+      if (mounted) setState(() => item.job = job);
       await ConversionEngine.instance.run(
         job,
         cancel: cancel,
@@ -215,7 +216,26 @@ class _BatchPageState extends State<BatchPage> {
       );
       await HistoryStore.instance.record(job);
       if (job.status == JobStatus.done) succeeded++;
+      if (mounted) setState(() => _completed++);
+      _onJobTick();
     }
+
+    // Light jobs run several at a time; video and very large files stay serial
+    // because FFmpeg already saturates every core, so running four at once is
+    // slower overall and makes the phone hot.
+    Future<void> drain(int concurrency) async {
+      final workers = List.generate(concurrency.clamp(1, 4), (_) async {
+        while (true) {
+          if (cancel.isCancelled) return;
+          final index = started++;
+          if (index >= queue.length) return;
+          await runOne(queue[index], index);
+        }
+      });
+      await Future.wait(workers);
+    }
+
+    await drain(_concurrencyFor(queue, target));
 
     if (!mounted) return;
     setState(() {
@@ -242,6 +262,18 @@ class _BatchPageState extends State<BatchPage> {
   void _onJobTick() {
     if (!mounted) return;
     _overallProgress.value = _overall;
+  }
+
+  /// How many jobs to run at once. Video is left strictly serial; FFmpeg
+  /// already uses every core for a single clip, so overlapping them only adds
+  /// memory pressure and heat.
+  static int _concurrencyFor(List<_Item> queue, FileFormat target) {
+    const heavyBytes = 100 * 1024 * 1024;
+    final heavy = target.family == Family.video ||
+        queue.any((i) =>
+            i.format?.family == Family.video || i.sizeBytes > heavyBytes);
+    if (heavy) return 1;
+    return (Platform.numberOfProcessors ~/ 2).clamp(1, 4);
   }
 
   /// Overall progress across the queue: finished files plus the live fraction
@@ -391,7 +423,7 @@ class _BatchPageState extends State<BatchPage> {
                 PulseProgressListener(
                   progress: _overallProgress,
                   size: 170,
-                  label: 'File ${_currentIndex + 1} of ${_items.length}',
+                  label: '$_completed of ${_items.length} done',
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -616,7 +648,7 @@ class _ItemRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              FormatBadge(item.format?.ext ?? '?', size: 38),
+              FilePreview(path: item.path, format: item.format, size: 38),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

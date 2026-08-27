@@ -14,6 +14,7 @@ import '../../core/data/settings_store.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/brand.dart';
 import '../../core/widgets/common.dart';
+import '../../core/widgets/file_preview.dart';
 import '../../core/widgets/pulse.dart';
 import '../../core/widgets/starfield.dart';
 import '../../engine/converters/converter.dart';
@@ -262,7 +263,8 @@ class _ConvertPageState extends State<ConvertPage> {
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            FormatBadge(source.ext, size: 46, filled: true),
+            // Shows the actual file, not just its extension.
+            FilePreview(path: _sourcePath, format: source, size: 46, filled: true),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -441,6 +443,12 @@ class _ConvertPageState extends State<ConvertPage> {
     final t = context.tokens;
     final delta = job.sizeDeltaRatio;
     return [
+      // The converted file itself, so an exotic output is still viewable even
+      // with no app installed that understands it.
+      if (job.outputPath != null) ...[
+        FilePreview(path: job.outputPath!, format: job.target, expanded: true),
+        const SizedBox(height: 12),
+      ],
       Panel(
         child: Column(
           children: [
