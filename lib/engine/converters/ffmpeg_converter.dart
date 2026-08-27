@@ -425,10 +425,13 @@ class FfmpegConverter extends FileConverter {
         // mjpeg -q:v runs 2 (best) to 31 (worst).
         return ['-q:v', '${(2 + (100 - q) * 29 / 99).round()}'];
       case 'webp':
-        return ['-quality', '$q', '-compression_level', '6'];
+        // Level 4 rather than libwebp's slowest setting: on a 12 MP photo the
+        // top level costs seconds for a percent or two of file size.
+        return ['-quality', '$q', '-compression_level', '4'];
       case 'avif':
-        // libaom CRF: 0 (best) to 63 (worst).
-        return ['-crf', '${((100 - q) * 63 / 99).round()}', '-b:v', '0', '-cpu-used', '6'];
+        // libaom CRF: 0 (best) to 63 (worst). cpu-used 8 is the fastest useful
+        // preset; AV1 still encodes slowly enough to matter on a phone.
+        return ['-crf', '${((100 - q) * 63 / 99).round()}', '-b:v', '0', '-cpu-used', '8'];
       case 'jp2':
       case 'j2k':
         return ['-q:v', '${(2 + (100 - q) * 29 / 99).round()}'];

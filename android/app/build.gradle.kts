@@ -40,8 +40,10 @@ android {
         multiDexEnabled = true
 
         ndk {
-            // Real phones only. x86_64 is emulator territory and cost 76.7 MB
-            // of the 246 MB of native libraries in the universal APK.
+            // Real phones only. Note this alone is not enough: the Flutter
+            // Gradle plugin sets its own abiFilters, and native libraries that
+            // arrive inside a plugin AAR (FFmpeg) ignore it entirely. The
+            // jniLibs exclude below is what actually removes them.
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
@@ -75,12 +77,16 @@ android {
 
     packaging {
         jniLibs {
-            // Modern packaging: the .so files are page-aligned and mapped
-            // straight out of the APK. Legacy packaging made the installer
-            // extract a second uncompressed copy of all ~250 MB into
-            // /data/app, roughly doubling on-device footprint. The OEM-loader
-            // concern that justified it does not apply at minSdk 24.
-            useLegacyPackaging = false
+            // Compressed in the APK. Uncompressed packaging halves the
+            // installed footprint and loads faster, but it took the universal
+            // APK from 121 MB to 250 MB, and download size is what decides
+            // whether people install at all.
+            useLegacyPackaging = true
+
+            // x86 is emulator-only and costs ~49 MB of FFmpeg per build.
+            // --target-platform cannot remove these because they come from the
+            // ffmpeg-kit AAR rather than from Flutter.
+            excludes += setOf("**/x86/**", "**/x86_64/**")
         }
         resources {
             excludes += setOf(
