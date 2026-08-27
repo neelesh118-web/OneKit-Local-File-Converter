@@ -21,8 +21,6 @@ dependencies:
   path: ^1.9.0
   share_plus: ^13.0.0
   open_filex: ^4.7.0
-  permission_handler: ^11.3.1
-  mime: ^2.0.0
 
   # Persistence
   sqflite: ^2.4.1
@@ -33,14 +31,12 @@ dependencies:
   archive: ^4.0.9
   pdf: ^3.11.1
   pdfrx: ^2.4.8
-  flutter_image_compress: ^2.3.0
   csv: ^6.0.0
   xml: ^6.5.0
   yaml: ^3.1.2
   markdown: ^7.2.2
   html: ^0.15.5
   crypto: ^3.0.6
-  qr: ^3.0.2
 
   # Monetization
   google_mobile_ads: 9.0.0

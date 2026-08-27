@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Conversion is entirely local. The only network use is AdMob, which
          requires INTERNET and its network-state companion. -->
@@ -10,6 +11,18 @@
 
     <!-- AdMob on Android 13+ -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
+
+    <!-- Removed, not requested. The file picker plugin declares broad media
+         access defensively, but OneKit only ever receives files the user picks
+         through Android's own document picker, which needs no permission at
+         all. Leaving these in would be untrue to the privacy claim on the
+         store listing and would drag the app into Google's Photo and Video
+         Permissions policy review for access it never uses. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove"/>
 
     <application
         android:label="OneKit"

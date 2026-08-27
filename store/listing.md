@@ -10,7 +10,7 @@ OneKit - Local File Converter
 ## Short description (80 chars max)
 
 ```
-Convert 5,900+ file formats offline. No upload, no account, nothing leaves you.
+Convert 5,800+ file formats offline. No upload, no account, nothing leaves you.
 ```
 *(78 characters)*
 
@@ -24,7 +24,7 @@ That one decision changes everything about how a converter behaves. Your files
 stay private. It works on a plane, on the metro, on no signal at all. There is
 no 100 MB cap, no daily limit, and no "upgrade to convert this one".
 
-5,935 CONVERSIONS, 145 FORMATS
+5,880 CONVERSIONS, 144 FORMATS
 
 • Images — PNG, JPG, WebP, AVIF, HEIC, HEIF, TIFF, BMP, GIF, ICO, JPEG 2000,
   QOI, PSD, EXR, HDR, TGA, PCX, DDS and more
@@ -65,6 +65,10 @@ space you saved.
 
 Files — a built-in file manager for your converted files: search, sort,
 select several, share, delete, or convert them again.
+
+Previews — OneKit shows you the result itself. Convert to an unusual format
+and you can still see it, even with no other app on your phone that
+understands it.
 
 DESIGN
 
@@ -111,16 +115,27 @@ the device. Nothing is transmitted.
 
 ## Permissions and why
 
+Verified against the built APK with `aapt2 dump badging`, not just the source
+manifest — plugins merge permissions in, and two of them had to be stripped.
+
 | Permission | Reason |
 | --- | --- |
 | `INTERNET` | AdMob only |
 | `ACCESS_NETWORK_STATE` | Required by the Google Mobile Ads SDK |
-| `AD_ID` | AdMob on Android 13+ |
+| `AD_ID`, `ACCESS_ADSERVICES_*` | AdMob on Android 13+ |
 | `WAKE_LOCK` | Keeps long video and batch conversions running |
+| `FOREGROUND_SERVICE` | Declared by the FFmpeg plugin |
 
-No storage permission is requested: files come in through the system picker
-and results are written to app-private storage, then shared out via the
-system share sheet.
+**No storage or media permission is requested.** `READ_EXTERNAL_STORAGE` and
+`READ_MEDIA_IMAGES` / `VIDEO` / `AUDIO` were being merged in by the file picker
+plugin and are explicitly removed in the manifest. Files reach the app only
+through Android's own document picker, which requires no permission, and
+results are written to app-private storage and shared out via the system share
+sheet. Verified on device: picking still works with all of them removed.
+
+Keeping them would have been untrue to the privacy claim above and would have
+pulled the app into Google's **Photo and Video Permissions** policy review for
+access it never uses.
 
 ## Assets in this folder
 
