@@ -120,7 +120,9 @@ class ConversionEngine {
       job.errorDetail = e.detail;
     } catch (e) {
       job.status = cancel.isCancelled ? JobStatus.cancelled : JobStatus.failed;
-      job.error = cancel.isCancelled ? 'Cancelled' : 'Something went wrong converting this file.';
+      job.error = cancel.isCancelled
+          ? 'Cancelled'
+          : 'Something went wrong converting this file.';
       job.errorDetail = '$e';
     } finally {
       job.elapsed = DateTime.now().difference(started);

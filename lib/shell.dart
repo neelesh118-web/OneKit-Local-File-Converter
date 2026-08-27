@@ -34,7 +34,8 @@ class AppShell extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: t.background,
-      extendBody: true,
+      // Not extendBody: the nav bar is effectively opaque, and letting content
+      // run underneath it left the last rows of every tab unreachable.
       body: Stack(
         fit: StackFit.expand,
         children: [

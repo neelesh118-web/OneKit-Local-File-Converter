@@ -79,6 +79,17 @@ advertised pair resolves to a converter**.
 FFmpeg and pdfium — by walking the registry on a real device: every decodable
 format is read back, every encodable format is written. **213/213 pass.**
 
+Run it in **profile mode**, not debug:
+
+```bash
+flutter drive --driver=test_driver/integration_test.dart   --target=integration_test/format_matrix_test.dart --profile
+```
+
+Debug is JIT and release is AOT, and they disagree. An isolate closure that
+captured its `ConvertRequest` — and with it a `CancelToken` holding callbacks —
+passed every debug run and failed every conversion in the shipped APK. Only an
+AOT run catches that class of bug.
+
 That pass rate took three rounds. The first found 17 broken conversions, which
 is exactly the point: ALAC needed an MP4 container, AMR and GSM are 8 kHz mono
 only, DTS is an experimental encoder, 3GP needs baseline H.264 with AAC, DV and

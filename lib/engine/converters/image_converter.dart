@@ -45,17 +45,20 @@ class DartImageConverter extends FileConverter {
     r.cancel.throwIfCancelled();
     r.onProgress(0.2, indeterminate: false);
 
+    // Copy every value the worker needs into locals first. Capturing `r`
+    // directly would drag its callbacks and CancelToken into the isolate
+    // message; the JIT tolerates that, but AOT rejects it and the conversion
+    // fails only in release builds.
+    final fromExt = r.from.ext;
+    final toExt = r.to.ext;
+    final quality = r.options.quality;
+    final width = r.options.width;
+    final height = r.options.height;
+
     // Decode + re-encode on a worker isolate; large images would otherwise
     // block the UI thread for hundreds of milliseconds.
     final out = await Isolate.run(
-      () => _transcode(
-        bytes,
-        r.from.ext,
-        r.to.ext,
-        r.options.quality,
-        r.options.width,
-        r.options.height,
-      ),
+      () => _transcode(bytes, fromExt, toExt, quality, width, height),
     );
 
     r.cancel.throwIfCancelled();
