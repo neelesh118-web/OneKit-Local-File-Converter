@@ -16,13 +16,13 @@ dependencies:
   go_router: ^14.6.2
 
   # Files
-  file_picker: ^8.1.7
+  file_picker: ^12.1.1
   path_provider: ^2.1.5
   path: ^1.9.0
-  share_plus: ^10.1.4
+  share_plus: ^13.0.0
   open_filex: ^4.7.0
   permission_handler: ^11.3.1
-  mime: ^1.0.6
+  mime: ^2.0.0
 
   # Persistence
   sqflite: ^2.4.1

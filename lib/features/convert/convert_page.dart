@@ -526,9 +526,11 @@ class _ConvertPageState extends State<ConvertPage> {
   Future<void> _share(ConversionJob job) async {
     final path = job.outputPath;
     if (path == null) return;
-    await Share.shareXFiles(
-      [XFile(path), ...job.extraOutputs.map(XFile.new)],
-      subject: p.basename(path),
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(path), ...job.extraOutputs.map(XFile.new)],
+        subject: p.basename(path),
+      ),
     );
   }
 }

@@ -192,7 +192,7 @@ class _EntryRow extends StatelessWidget {
                 title: const Text('Share'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  Share.shareXFiles([XFile(entry.outputPath!)]);
+                  SharePlus.instance.share(ShareParams(files: [XFile(entry.outputPath!)]));
                 },
               ),
             ],

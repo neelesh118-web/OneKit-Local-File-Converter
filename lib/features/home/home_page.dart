@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 
 import '../../core/ads/ads.dart';
 import '../../core/data/history_store.dart';
@@ -70,17 +71,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _pickSingle() async {
-    final result = await FilePicker.platform.pickFiles(withReadStream: false);
-    final file = result?.files.firstOrNull;
+    final file = await FilePicker.pickFile();
     final path = file?.path;
     if (path == null || !mounted) return;
     context.push('/convert', extra: ConvertArgs(paths: [path], displayNames: [file!.name]));
   }
 
   Future<void> _pickMultiple() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    final files = await FilePicker.pickFiles();
     final paths = [
-      for (final f in result?.files ?? <PlatformFile>[])
+      for (final f in files)
         if (f.path != null) f.path!,
     ];
     if (paths.isEmpty || !mounted) return;
@@ -249,13 +249,25 @@ class _PairChip extends StatelessWidget {
   final ConversionPair pair;
 
   Future<void> _run(BuildContext context) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: [pair.from.ext, ...pair.from.aliases],
-    );
-    final file = result?.files.firstOrNull;
+    // The picker is deliberately unfiltered: Android maps extensions to MIME
+    // types, and the long tail (QOI, FARBFELD, DFXP, ...) has no mapping, so a
+    // filtered picker would show a screen with nothing selectable. Validating
+    // afterwards is both more reliable and easier to explain when it is wrong.
+    final file = await FilePicker.pickFile();
     final path = file?.path;
     if (path == null || !context.mounted) return;
+
+    final picked = FormatRegistry.byExt(p.extension(path));
+    if (picked?.ext != pair.from.ext) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('That is a ${picked?.upper ?? 'unknown'} file. '
+              'This shortcut converts ${pair.from.upper}.'),
+        ),
+      );
+      return;
+    }
+
     context.push(
       '/convert',
       extra: ConvertArgs(paths: [path], target: pair.to, displayNames: [file!.name]),

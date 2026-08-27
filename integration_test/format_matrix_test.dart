@@ -211,10 +211,10 @@ Future<void> _ffmpegGenerate(List<String> args) async {
   final session = await FFmpegKit.executeWithArguments(['-hide_banner', '-y', ...args]);
   final code = await session.getReturnCode();
   if (!ReturnCode.isSuccess(code)) {
-    final logs = await session.getAllLogsAsString();
-    fail('fixture generation failed: ${logs?.split('
-').take(6).join('
-')}');
+    final logs = await session.getAllLogsAsString() ?? '';
+    // Only the tail matters; a full FFmpeg log would bury the failure.
+    final tail = const LineSplitter().convert(logs).reversed.take(6).toList().reversed;
+    fail('fixture generation failed:\n${tail.join('\n')}');
   }
 }
 

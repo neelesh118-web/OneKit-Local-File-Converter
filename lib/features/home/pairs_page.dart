@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
@@ -74,13 +75,22 @@ class _PairsPageState extends State<PairsPage> {
   }
 
   Future<void> _run(ConversionPair pair) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: {pair.from.ext, ...pair.from.aliases}.toList(),
-    );
-    final file = result?.files.firstOrNull;
+    // Unfiltered on purpose — see the note in home_page.dart.
+    final file = await FilePicker.pickFile();
     final path = file?.path;
     if (path == null || !mounted) return;
+
+    final picked = FormatRegistry.byExt(p.extension(path));
+    if (picked?.ext != pair.from.ext) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('That is a ${picked?.upper ?? 'unknown'} file. '
+              'This conversion starts from ${pair.from.upper}.'),
+        ),
+      );
+      return;
+    }
+
     context.push(
       '/convert',
       extra: ConvertArgs(paths: [path], target: pair.to, displayNames: [file!.name]),

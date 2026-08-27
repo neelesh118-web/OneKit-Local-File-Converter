@@ -102,20 +102,24 @@ class _BatchPageState extends State<BatchPage> {
   }
 
   Future<void> _pickFiles() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    final files = await FilePicker.pickFiles();
     _addPaths([
-      for (final f in result?.files ?? <PlatformFile>[])
+      for (final f in files)
         if (f.path != null) f.path!,
     ]);
   }
 
   Future<void> _pickZip() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['zip'],
-    );
-    final path = result?.files.firstOrNull?.path;
+    final picked = await FilePicker.pickFile();
+    final path = picked?.path;
     if (path == null) return;
+    if (!mounted) return;
+    if (p.extension(path).toLowerCase() != '.zip') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a ZIP file to unpack.')),
+      );
+      return;
+    }
 
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -243,7 +247,7 @@ class _BatchPageState extends State<BatchPage> {
         if (i.job?.outputPath != null) XFile(i.job!.outputPath!),
     ];
     if (files.isEmpty) return;
-    await Share.shareXFiles(files, subject: 'Converted with OneKit');
+    await SharePlus.instance.share(ShareParams(files: files, subject: 'Converted with OneKit'));
   }
 
   /// Packs every successful output into one ZIP for a single share/save.
@@ -271,7 +275,7 @@ class _BatchPageState extends State<BatchPage> {
     await File(zipPath).writeAsBytes(encoded, flush: true);
 
     messenger.showSnackBar(SnackBar(content: Text('Saved ${p.basename(zipPath)}')));
-    await Share.shareXFiles([XFile(zipPath)]);
+    await SharePlus.instance.share(ShareParams(files: [XFile(zipPath)]));
   }
 
   Future<void> _openOptions() async {

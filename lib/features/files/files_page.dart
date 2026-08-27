@@ -26,8 +26,20 @@ class FilesPage extends StatefulWidget {
   State<FilesPage> createState() => _FilesPageState();
 }
 
+/// A file plus its stat, read once at load time. Sorting and the size total
+/// used to call statSync from inside the comparator, which meant thousands of
+/// syscalls on every rebuild.
+class _Entry {
+  const _Entry(this.file, this.size, this.modified);
+  final File file;
+  final int size;
+  final DateTime modified;
+
+  String get name => p.basename(file.path);
+}
+
 class _FilesPageState extends State<FilesPage> {
-  List<FileSystemEntity> _files = const [];
+  List<_Entry> _files = const [];
   final Set<String> _selected = {};
   _Sort _sort = _Sort.newest;
   String _query = '';
@@ -43,44 +55,42 @@ class _FilesPageState extends State<FilesPage> {
   Future<void> _load() async {
     final dir = await ConversionEngine.outputDir();
     await dir.create(recursive: true);
-    final entries = await dir.list().where((e) => e is File).toList();
+
+    final entries = <_Entry>[];
+    await for (final e in dir.list()) {
+      if (e is! File) continue;
+      try {
+        final stat = await e.stat();
+        entries.add(_Entry(e, stat.size, stat.modified));
+      } on FileSystemException {
+        // A file removed between listing and stat is simply not shown.
+        continue;
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _dir = dir;
       _files = entries;
+      _totalBytes = entries.fold(0, (sum, e) => sum + e.size);
       _loading = false;
-      _selected.removeWhere((path) => !entries.any((e) => e.path == path));
+      _selected.removeWhere((path) => !entries.any((e) => e.file.path == path));
     });
   }
 
-  List<File> get _visible {
+  int _totalBytes = 0;
+
+  List<_Entry> get _visible {
     final q = _query.toLowerCase();
-    final list = _files
-        .whereType<File>()
-        .where((f) => q.isEmpty || p.basename(f.path).toLowerCase().contains(q))
-        .toList();
+    final list = _files.where((e) => q.isEmpty || e.name.toLowerCase().contains(q)).toList();
 
-    list.sort((a, b) {
-      switch (_sort) {
-        case _Sort.newest:
-          return b.statSync().modified.compareTo(a.statSync().modified);
-        case _Sort.oldest:
-          return a.statSync().modified.compareTo(b.statSync().modified);
-        case _Sort.largest:
-          return b.lengthSync().compareTo(a.lengthSync());
-        case _Sort.name:
-          return p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase());
-      }
-    });
+    list.sort((a, b) => switch (_sort) {
+          _Sort.newest => b.modified.compareTo(a.modified),
+          _Sort.oldest => a.modified.compareTo(b.modified),
+          _Sort.largest => b.size.compareTo(a.size),
+          _Sort.name => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        });
     return list;
-  }
-
-  int get _totalBytes {
-    var sum = 0;
-    for (final f in _files.whereType<File>()) {
-      sum += f.lengthSync();
-    }
-    return sum;
   }
 
   Future<void> _deleteSelected() async {
@@ -108,7 +118,9 @@ class _FilesPageState extends State<FilesPage> {
 
   Future<void> _shareSelected() async {
     if (_selected.isEmpty) return;
-    await Share.shareXFiles([for (final path in _selected) XFile(path)]);
+    await SharePlus.instance.share(
+      ShareParams(files: [for (final path in _selected) XFile(path)]),
+    );
   }
 
   @override
@@ -178,23 +190,23 @@ class _FilesPageState extends State<FilesPage> {
                               : null,
                         )
                       else
-                        for (final f in files)
+                        for (final e in files)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: _FileRow(
-                              file: f,
-                              selected: _selected.contains(f.path),
+                              entry: e,
+                              selected: _selected.contains(e.file.path),
                               selecting: selecting,
                               onTap: () {
                                 if (selecting) {
-                                  setState(() => _selected.contains(f.path)
-                                      ? _selected.remove(f.path)
-                                      : _selected.add(f.path));
+                                  setState(() => _selected.contains(e.file.path)
+                                      ? _selected.remove(e.file.path)
+                                      : _selected.add(e.file.path));
                                 } else {
-                                  _openSheet(f);
+                                  _openSheet(e.file);
                                 }
                               },
-                              onLongPress: () => setState(() => _selected.add(f.path)),
+                              onLongPress: () => setState(() => _selected.add(e.file.path)),
                             ),
                           ),
                       const SizedBox(height: 12),
@@ -243,7 +255,7 @@ class _FilesPageState extends State<FilesPage> {
               title: const Text('Share'),
               onTap: () {
                 Navigator.pop(ctx);
-                Share.shareXFiles([XFile(file.path)]);
+                SharePlus.instance.share(ShareParams(files: [XFile(file.path)]));
               },
             ),
             if (format != null)
@@ -274,14 +286,14 @@ class _FilesPageState extends State<FilesPage> {
 
 class _FileRow extends StatelessWidget {
   const _FileRow({
-    required this.file,
+    required this.entry,
     required this.selected,
     required this.selecting,
     required this.onTap,
     required this.onLongPress,
   });
 
-  final File file;
+  final _Entry entry;
   final bool selected;
   final bool selecting;
   final VoidCallback onTap;
@@ -290,8 +302,7 @@ class _FileRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final ext = p.extension(file.path).replaceFirst('.', '');
-    final stat = file.statSync();
+    final ext = p.extension(entry.file.path).replaceFirst('.', '');
 
     return InkWell(
       onTap: onTap,
@@ -323,14 +334,14 @@ class _FileRow extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    p.basename(file.path),
+                    entry.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: t.textPrimary),
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    '${humanBytes(stat.size)} · ${_when(stat.modified)}',
+                    '${humanBytes(entry.size)} · ${_when(entry.modified)}',
                     style: TextStyle(fontSize: 11.5, color: t.textFaint),
                   ),
                 ],

@@ -51,7 +51,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _pickOutputDir(SettingsStore settings) async {
-    final path = await FilePicker.platform.getDirectoryPath();
+    final path = await FilePicker.getDirectoryPath();
     if (path != null) await settings.setOutputDir(path);
   }
 

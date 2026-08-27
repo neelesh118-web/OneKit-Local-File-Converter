@@ -50,6 +50,18 @@ class _StarfieldState extends State<Starfield> with SingleTickerProviderStateMix
     if (old.density != widget.density) _lastSize = Size.zero;
   }
 
+  /// Eases the field toward the requested speed. Called once per frame from the
+  /// painter's builder, so a change (idle -> converting) glides even though the
+  /// parent does not rebuild again.
+  void _tickSpeed() {
+    final target = widget.speed;
+    if ((target - _speed).abs() < 0.005) {
+      _speed = target;
+      return;
+    }
+    _speed += (target - _speed) * 0.06;
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -81,8 +93,6 @@ class _StarfieldState extends State<Starfield> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    // Ease toward the requested speed on every frame the widget rebuilds.
-    _speed = _speed + (widget.speed - _speed) * 0.25;
 
     return Stack(
       fit: StackFit.expand,
@@ -93,15 +103,18 @@ class _StarfieldState extends State<Starfield> with SingleTickerProviderStateMix
               _ensureStars(constraints.biggest);
               return AnimatedBuilder(
                 animation: _controller,
-                builder: (context, _) => CustomPaint(
-                  size: constraints.biggest,
-                  painter: _StarfieldPainter(
-                    stars: _stars,
-                    time: _controller.value * 60,
-                    color: t.starColor,
-                    speed: _speed,
-                  ),
-                ),
+                builder: (context, _) {
+                  _tickSpeed();
+                  return CustomPaint(
+                    size: constraints.biggest,
+                    painter: _StarfieldPainter(
+                      stars: _stars,
+                      time: _controller.value * 60,
+                      color: t.starColor,
+                      speed: _speed,
+                    ),
+                  );
+                },
               );
             },
           ),
