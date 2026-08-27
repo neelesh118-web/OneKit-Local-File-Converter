@@ -10,7 +10,7 @@ OneKit - Local File Converter
 ## Short description (80 chars max)
 
 ```
-Convert 6,000+ file formats offline. No upload, no account, nothing leaves you.
+Convert 5,900+ file formats offline. No upload, no account, nothing leaves you.
 ```
 *(78 characters)*
 
@@ -24,7 +24,7 @@ That one decision changes everything about how a converter behaves. Your files
 stay private. It works on a plane, on the metro, on no signal at all. There is
 no 100 MB cap, no daily limit, and no "upgrade to convert this one".
 
-6,126 CONVERSIONS, 145 FORMATS
+5,935 CONVERSIONS, 145 FORMATS
 
 • Images — PNG, JPG, WebP, AVIF, HEIC, HEIF, TIFF, BMP, GIF, ICO, JPEG 2000,
   QOI, PSD, EXR, HDR, TGA, PCX, DDS and more
