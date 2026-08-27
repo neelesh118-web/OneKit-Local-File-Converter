@@ -128,9 +128,7 @@ system share sheet.
 | --- | --- |
 | `icon_512.png` | Play Store icon (512×512) |
 | `feature_graphic_1024x500.png` | Feature graphic |
-
-Screenshots still need to be captured from a device (Play requires at least
-two phone screenshots, 16:9 or 9:16, min 320 px on the short edge).
+| `screenshots/1_splash.png` … `6_settings.png` | Phone screenshots, 720×1640, captured from the signed release build on a physical device |
 
 ## Release checklist
 
@@ -141,6 +139,9 @@ two phone screenshots, 16:9 or 9:16, min 320 px on the short edge).
 - [x] Production ad unit IDs, with Google test units in debug builds
 - [x] Adaptive + monochrome launcher icons
 - [x] Native launch screen for light and dark
-- [ ] Phone screenshots
-- [ ] Privacy policy URL (required — the app shows ads)
-- [ ] Decide on the FFmpeg licence build (see README)
+- [x] Phone screenshots (720×1640, from the signed release build)
+- [x] Release AAB built and verified signed (valid to 2056)
+- [x] Every conversion path exercised on a physical device (213/213)
+- [x] End-to-end conversion verified in the signed release build
+- [ ] Privacy policy URL — **required**, the app shows ads
+- [ ] Decide on the FFmpeg licence build (see README) — **blocks publishing**

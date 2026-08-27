@@ -78,7 +78,9 @@ class _HistoryPageState extends State<HistoryPage> {
       children: [
         PageHeader(
           title: 'History',
-          subtitle: stats == null ? null : '${stats.total} conversions on this device',
+          subtitle: stats == null
+              ? null
+              : '${stats.total} conversion${stats.total == 1 ? '' : 's'} on this device',
           actions: [
             if (_entries.isNotEmpty)
               IconButton(
