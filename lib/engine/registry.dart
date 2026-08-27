@@ -47,7 +47,8 @@ class FormatRegistry {
     FileFormat('qoi', 'Quite OK Image', Family.image, mime: 'image/qoi'),
     FileFormat('apng', 'Animated PNG', Family.image, mime: 'image/apng'),
     FileFormat('wbmp', 'Wireless Bitmap', Family.image, mime: 'image/vnd.wap.wbmp'),
-    FileFormat('farbfeld', 'Farbfeld', Family.image, mime: 'image/farbfeld'),
+    // Read-only: no farbfeld encoder in the bundled build.
+    FileFormat('farbfeld', 'Farbfeld', Family.image, write: false, mime: 'image/farbfeld'),
     FileFormat('phm', 'Portable Half Map', Family.image, mime: 'image/x-portable-halfmap'),
     FileFormat('vbn', 'Vizrt Binary Image', Family.image, mime: 'image/vbn'),
   ];
@@ -79,13 +80,15 @@ class FormatRegistry {
     FileFormat('w64', 'Sony Wave64', Family.audio, mime: 'audio/x-w64'),
     FileFormat('wv', 'WavPack', Family.audio, mime: 'audio/x-wavpack'),
     FileFormat('spx', 'Speex', Family.audio, write: false, mime: 'audio/speex', lossy: true),
-    FileFormat('gsm', 'GSM 06.10', Family.audio, mime: 'audio/gsm', lossy: true),
+    // Read-only: the bundled FFmpeg has no libgsm encoder.
+    FileFormat('gsm', 'GSM 06.10', Family.audio, write: false, mime: 'audio/gsm', lossy: true),
     FileFormat('sbc', 'Bluetooth SBC', Family.audio, mime: 'audio/sbc', lossy: true),
     FileFormat('ape', 'Monkey Audio', Family.audio, write: false, mime: 'audio/x-ape'),
     FileFormat('mpc', 'Musepack', Family.audio, write: false, mime: 'audio/x-musepack', lossy: true),
     FileFormat('ra', 'RealAudio', Family.audio, write: false, mime: 'audio/x-realaudio', lossy: true),
     FileFormat('shn', 'Shorten', Family.audio, write: false, mime: 'audio/x-shorten'),
-    FileFormat('8svx', 'Amiga 8SVX', Family.audio, mime: 'audio/x-8svx'),
+    // Read-only: FFmpeg demuxes IFF/8SVX but has no muxer for it.
+    FileFormat('8svx', 'Amiga 8SVX', Family.audio, write: false, mime: 'audio/x-8svx'),
     FileFormat('adts', 'ADTS AAC Stream', Family.audio, mime: 'audio/aacp', lossy: true),
   ];
 

@@ -106,6 +106,11 @@ class ConversionJob {
   List<String> extraOutputs = const [];
 
   String? error;
+
+  /// The underlying engine's reason (an FFmpeg log tail, a decoder message).
+  /// Shown behind a disclosure on the failure card, never as the headline.
+  String? errorDetail;
+
   Duration elapsed = Duration.zero;
   int outputBytes = 0;
 

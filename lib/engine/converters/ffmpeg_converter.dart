@@ -127,9 +127,20 @@ class FfmpegConverter extends FileConverter {
       if (br != null && _lossyAudio.contains(r.to.ext)) {
         args.addAll(['-b:a', '${br}k']);
       }
-      if (o.sampleRate != null) args.addAll(['-ar', '${o.sampleRate}']);
+
+      // Some codecs accept only one rate and channel count. Narrow-band speech
+      // codecs are the main case: AMR-NB and GSM are 8 kHz mono, full stop.
+      final fixed = _fixedAudioLayout[r.to.ext];
+      if (fixed != null) {
+        args.addAll(['-ar', '${fixed.rate}', '-ac', '${fixed.channels}']);
+      } else if (o.sampleRate != null) {
+        args.addAll(['-ar', '${o.sampleRate}']);
+      }
+
       final codec = _audioCodec[r.to.ext];
       if (codec != null) args.addAll(['-c:a', codec]);
+      // FFmpeg refuses its own experimental encoders without this.
+      if (_experimentalCodecs.contains(codec)) args.addAll(['-strict', '-2']);
     } else if (r.to.family == Family.video) {
       final vcodec = _videoCodec[r.to.ext];
       if (vcodec != null) args.addAll(['-c:v', vcodec]);
@@ -140,8 +151,35 @@ class FfmpegConverter extends FileConverter {
       if (stillToVideo) {
         args.addAll(['-pix_fmt', 'yuv420p']);
       }
-      // Even dimensions are required by most H.264/H.265 profiles.
-      args.addAll(['-vf', _scaleFilter(o, forceEven: true)]);
+      // The 3GPP containers only accept baseline H.264 with AAC audio.
+      if (r.to.ext == '3gp' || r.to.ext == '3g2') {
+        args.addAll([
+          '-profile:v', 'baseline', '-level', '3.0',
+          '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+        ]);
+      } else if (_needsAacAudio.contains(r.to.ext)) {
+        // MP4-family muxers reject Vorbis/Opus, which is what a WebM source
+        // would otherwise carry straight through.
+        args.addAll(['-c:a', 'aac']);
+      }
+      // DV and MXF are broadcast formats with fixed geometry: DV is 720x576
+      // at 25 fps, and MXF wants 4:2:0 MPEG-2 with 48 kHz audio. Resizing is
+      // not optional here — it is what the format is.
+      if (r.to.ext == 'dv') {
+        args.addAll([
+          '-s', '720x576', '-r', '25', '-pix_fmt', 'yuv420p',
+          '-ar', '48000', '-ac', '2',
+        ]);
+      } else if (r.to.ext == 'mxf') {
+        args.addAll([
+          '-pix_fmt', 'yuv420p', '-r', '25',
+          '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2',
+        ]);
+      } else {
+        // Even dimensions are required by most H.264/H.265 profiles.
+        args.addAll(['-vf', _scaleFilter(o, forceEven: true)]);
+      }
     } else if (r.to.family == Family.image) {
       if (r.from.family == Family.video) {
         if (r.to.ext == 'gif' || r.to.ext == 'apng' || r.to.ext == 'webp') {
@@ -154,6 +192,11 @@ class FfmpegConverter extends FileConverter {
       } else {
         args.addAll(['-vf', _scaleFilter(o)]);
       }
+      // PNM is a family (PBM/PGM/PPM), so the concrete encoder has to be named.
+      final imageCodec = _imageCodec[r.to.ext];
+      if (imageCodec != null) args.addAll(['-c:v', imageCodec]);
+      final pixFmt = _imagePixFmt[r.to.ext];
+      if (pixFmt != null) args.addAll(['-pix_fmt', pixFmt]);
       args.addAll(_imageQualityArgs(r.to, o.quality));
     }
 
@@ -198,6 +241,16 @@ class FfmpegConverter extends FileConverter {
     }
   }
 
+  /// Codecs that accept exactly one sample rate / channel layout.
+  static const _fixedAudioLayout = <String, ({int rate, int channels})>{
+    'amr': (rate: 8000, channels: 1),
+    'gsm': (rate: 8000, channels: 1),
+    '8svx': (rate: 8000, channels: 1),
+  };
+
+  /// Encoders FFmpeg marks experimental; they need -strict -2 to run at all.
+  static const _experimentalCodecs = {'dca', 'opus'};
+
   static const _lossyAudio = {'mp3', 'aac', 'm4a', 'ogg', 'oga', 'opus', 'ac3', 'eac3', 'mp2', 'amr', 'adts', 'sbc', 'gsm'};
 
   static const _audioCodec = {
@@ -230,6 +283,9 @@ class FfmpegConverter extends FileConverter {
     'mka': 'libvorbis',
   };
 
+  /// Containers that must carry AAC audio regardless of what came in.
+  static const _needsAacAudio = {'mp4', 'm4v', 'mov', 'f4v', 'flv', 'ts'};
+
   static const _videoCodec = {
     'mp4': 'libx264',
     'm4v': 'libx264',
@@ -240,8 +296,10 @@ class FfmpegConverter extends FileConverter {
     'flv': 'libx264',
     'h264': 'libx264',
     'hevc': 'libx265',
-    'webm': 'libvpx-vp9',
-    'ivf': 'libvpx-vp9',
+    // VP8, not VP9: the bundled build writes VP9 that its own decoder then
+    // rejects, which broke every webm/ivf round trip on device.
+    'webm': 'libvpx',
+    'ivf': 'libvpx',
     'ogv': 'libtheora',
     'avi': 'mpeg4',
     'asf': 'msmpeg4v3',
@@ -254,17 +312,33 @@ class FfmpegConverter extends FileConverter {
     'y4m': 'rawvideo',
   };
 
-  static const _crfCodecs = {'libx264', 'libx265', 'libvpx-vp9'};
+  static const _crfCodecs = {'libx264', 'libx265', 'libvpx-vp9', 'libvpx'};
 
-  /// Extensions ffmpeg cannot infer a muxer from on its own.
+  /// Image encoders that accept only one pixel format.
+  static const _imagePixFmt = {
+    'vbn': 'rgba',
+    'wbmp': 'monob',
+    'xbm': 'monob',
+  };
+
+  /// Image targets whose muxer cannot pick an encoder from the extension.
+  static const _imageCodec = {
+    'pnm': 'ppm',
+    'vbn': 'vbn',
+    'ras': 'sunrast',
+    'phm': 'phm',
+  };
+
+  /// Extensions FFmpeg cannot infer a muxer from on its own.
   static const _forcedFormat = {
+    // ALAC is a codec, not a container: it has to be muxed into MP4/iTunes.
+    'alac': 'ipod',
     'adts': 'adts',
     'h264': 'h264',
     'hevc': 'hevc',
     'zlib': 'data',
-    'farbfeld': 'image2',
+    'pnm': 'image2',
     'phm': 'image2',
-    'vbn': 'image2',
     'ras': 'image2',
     'apng': 'apng',
   };

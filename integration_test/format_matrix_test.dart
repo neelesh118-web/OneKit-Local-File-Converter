@@ -64,7 +64,11 @@ void main() {
       passes.add(label);
       return job.outputPath;
     }
-    failures[label] = job.error ?? 'status=${job.status.name}';
+    final detail = job.errorDetail;
+    // The engine's own reason, flattened onto one line so the report stays
+    // scannable when a dozen conversions fail at once.
+    final reason = detail == null ? '' : '  >  ${detail.replaceAll('\n', ' | ')}';
+    failures[label] = '${job.error ?? job.status.name}$reason';
     return null;
   }
 

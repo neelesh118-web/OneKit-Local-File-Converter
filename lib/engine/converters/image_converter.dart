@@ -20,7 +20,11 @@ class DartImageConverter extends FileConverter {
   String get name => 'Dart Image';
 
   /// Formats the bundled decoder handles.
-  static const decodable = {'png', 'jpg', 'jpeg', 'bmp', 'gif', 'ico', 'cur', 'tga', 'tiff', 'tif', 'webp', 'psd', 'exr', 'pnm', 'ppm', 'pgm', 'pbm'};
+  ///
+  /// PNM/PPM/PGM/PBM and EXR are deliberately absent: the decoder accepts only
+  /// a narrow subset of each and failed on real FFmpeg-written files during
+  /// device testing, so those route to FFmpeg instead.
+  static const decodable = {'png', 'jpg', 'jpeg', 'bmp', 'gif', 'ico', 'cur', 'tga', 'tiff', 'tif', 'webp', 'psd'};
 
   /// Formats the bundled encoder handles.
   static const encodable = {'png', 'jpg', 'jpeg', 'bmp', 'gif', 'ico', 'cur', 'tga', 'tiff', 'tif'};

@@ -3,7 +3,7 @@
 A file converter for Android that runs **entirely on the device**. No upload, no
 server, no account, no size limit beyond your own storage.
 
-**6,126 conversions across 145 formats**, generated from a capability registry
+**5,935 conversions across 145 formats**, generated from a capability registry
 rather than hand-listed, so the catalogue can never advertise something the
 engines cannot actually do.
 
@@ -73,8 +73,19 @@ sit ahead of the FFmpeg catch-all.
 
 `test/converters_test.dart` runs a real file through every pure-Dart converter
 and asserts on the bytes that come back, including a guard that **every
-advertised pair resolves to a converter**. That test is what keeps the
-catalogue honest.
+advertised pair resolves to a converter**.
+
+`integration_test/format_matrix_test.dart` covers what the host cannot reach —
+FFmpeg and pdfium — by walking the registry on a real device: every decodable
+format is read back, every encodable format is written. **213/213 pass.**
+
+That pass rate took three rounds. The first found 17 broken conversions, which
+is exactly the point: ALAC needed an MP4 container, AMR and GSM are 8 kHz mono
+only, DTS is an experimental encoder, 3GP needs baseline H.264 with AAC, DV and
+MXF have fixed broadcast geometry, and the bundled FFmpeg writes VP9 that its
+own decoder rejects (WebM and IVF are written as VP8 instead). Three encoders —
+farbfeld, libgsm and 8SVX — are simply absent from this build, so those formats
+are now read-only rather than advertised and broken.
 
 ### Known limitation
 
