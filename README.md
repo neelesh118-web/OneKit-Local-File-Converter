@@ -3,7 +3,7 @@
 A file converter for Android that runs **entirely on the device**. No upload, no
 server, no account, no size limit beyond your own storage.
 
-**5,935 conversions across 145 formats**, generated from a capability registry
+**5,880 conversions across 144 formats**, generated from a capability registry
 rather than hand-listed, so the catalogue can never advertise something the
 engines cannot actually do.
 
@@ -25,9 +25,11 @@ engines cannot actually do.
 Plus cross-family routes: video → audio, video → image/GIF, image → video,
 image → PDF, PDF → image/text/data/EPUB, document → eBook, subtitle → data.
 
-SVG is deliberately **not** listed: nothing in the bundled engines can
-rasterise it, and the registry is only allowed to advertise routes a converter
-actually claims — a rule enforced by a test.
+SVG and JPEG XL are deliberately **not** listed: the bundled engines cannot
+rasterise SVG and this FFmpeg build has no libjxl, so nothing in the app could
+read them. The registry is only allowed to advertise routes a converter
+actually claims, and a test asks FFmpeg directly which codecs it contains and
+fails if the catalogue overstates it.
 
 ## Features
 
@@ -41,8 +43,35 @@ actually claims — a rule enforced by a test.
   share, delete, or re-convert.
 - **Per-format options** — quality, resize, bitrate, sample rate, CRF, frame
   rate, PDF page ranges and render DPI, metadata stripping.
+- **Built-in previews** — converting to QOI or DPX should not mean you can
+  never look at the result. OneKit renders previews itself: images and video
+  frames and PDF pages, the opening lines of text and data files, and the
+  contents of archives. No other app required.
 - **Monochrome design** — the light and dark themes are exact inversions of one
   another, over a pulsing starfield that accelerates while a conversion runs.
+
+## Speed
+
+Measured on a physical mid-range phone in profile mode
+(`integration_test/benchmark_test.dart`):
+
+| Conversion | Before | After |
+| --- | --- | --- |
+| 12 MP PNG → JPG | 23.6 s | **2.7 s** |
+| MKV → MP4 (H.264 inside) | full re-encode | **447 ms** |
+| MP4 → MKV | full re-encode | **414 ms** |
+| Release APK | 121 MB | **87 MB** |
+
+Three things got it there:
+
+1. **Remux instead of re-encode.** If the encoded stream already suits the
+   target container, it is copied rather than transcoded — instant, and
+   lossless, so quality improves too.
+2. **The pure-Dart image path was deleted.** It was written to avoid a native
+   round trip and measured 9x *slower* than FFmpeg on a real photo.
+3. **Hardware encoding.** Where a re-encode is genuinely needed, the phone's
+   own MediaCodec encoder is tried first, falling back to software silently if
+   the chipset refuses.
 
 ## Architecture
 
