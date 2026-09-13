@@ -66,7 +66,7 @@ class SettingsStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Drives the "enjoying OneKit?" prompt without nagging on every launch.
+  /// Drives the "enjoying the app?" prompt without nagging on every launch.
   int get conversionCount => _prefs.getInt(_kConversionCount) ?? 0;
   Future<void> bumpConversionCount([int by = 1]) async {
     await _prefs.setInt(_kConversionCount, conversionCount + by);

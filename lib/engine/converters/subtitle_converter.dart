@@ -279,7 +279,7 @@ class SubtitleConverter extends FileConverter {
               .replaceAll(RegExp(r'<[^>]+>'), ''))
           .trim();
       if (text.isEmpty) continue;
-      // The end time is the next SYNC, which for a written-by-OneKit file is
+      // The end time is the next SYNC, which for a written-by-the app file is
       // exactly the blank block that follows this caption.
       final end = i + 1 < matches.length
           ? Duration(milliseconds: int.parse(matches[i + 1].group(1)!))

@@ -1,7 +1,7 @@
-/// OneKit format registry.
+/// the app format registry.
 ///
 /// Every conversion the app advertises is derived from this registry: a format
-/// declares which family it belongs to and whether OneKit can decode it, encode
+/// declares which family it belongs to and whether the app can decode it, encode
 /// it, or both. The pair matrix in [FormatRegistry.pairs] is generated from
 /// those capabilities, so the advertised catalogue can never drift from what the
 /// engines actually implement.
@@ -59,7 +59,7 @@ class FileFormat {
   final String name;
   final Family family;
 
-  /// Whether OneKit can decode / encode this format.
+  /// Whether the app can decode / encode this format.
   final bool read;
   final bool write;
 

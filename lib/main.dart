@@ -33,15 +33,8 @@ Future<void> main() async {
     ),
   );
 
-  // Give Flutter time to render the launch sequence and the first usable
-  // screen before the ads SDK starts loading native code and WebView pieces.
-  // This keeps monetisation from competing with the first frame.
+  // Initialize AdMob immediately so ads can load as soon as pages render.
   WidgetsBinding.instance.addPostFrameCallback((_) {
-    unawaited(
-      Future<void>.delayed(
-        const Duration(milliseconds: 3500),
-        AdManager.instance.initialize,
-      ),
-    );
+    unawaited(AdManager.instance.initialize());
   });
 }

@@ -218,17 +218,12 @@ class _HomePageState extends State<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(text: 'One', style: TextStyle(fontWeight: FontWeight.w800, color: t.textPrimary)),
-                      TextSpan(text: 'Kit', style: TextStyle(fontWeight: FontWeight.w300, color: t.textPrimary)),
-                    ],
-                  ),
-                  style: const TextStyle(fontSize: 22, letterSpacing: -0.8, height: 1.1),
+                Text(
+                  '100% Local File Converter',
+                  style: TextStyle(fontSize: 18, letterSpacing: -0.5, fontWeight: FontWeight.w800, color: t.textPrimary, height: 1.1),
                 ),
                 Text(
-                  'Local file converter',
+                  '${FormatRegistry.pairCount} conversions · offline',
                   style: TextStyle(fontSize: 11.5, color: t.textFaint, fontWeight: FontWeight.w500),
                 ),
               ],

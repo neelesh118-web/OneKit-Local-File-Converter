@@ -26,9 +26,15 @@ class AdIds {
   static const _rewarded = 'ca-app-pub-2489505475567649/6329394147';
   static const _appOpen = 'ca-app-pub-2489505475567649/9684466592';
 
-  static String get banner => kDebugMode ? _testBanner : _banner;
-  static String get interstitial => kDebugMode ? _testInterstitial : _interstitial;
-  static String get native => kDebugMode ? _testNative : _native;
-  static String get rewarded => kDebugMode ? _testRewarded : _rewarded;
-  static String get appOpen => kDebugMode ? _testAppOpen : _appOpen;
+  // TODO(release): Switch back to production IDs once AdMob ads are approved.
+  // static String get banner => kDebugMode ? _testBanner : _banner;
+  // static String get interstitial => kDebugMode ? _testInterstitial : _interstitial;
+  // static String get native => kDebugMode ? _testNative : _native;
+  // static String get rewarded => kDebugMode ? _testRewarded : _rewarded;
+  // static String get appOpen => kDebugMode ? _testAppOpen : _appOpen;
+  static String get banner => _testBanner;
+  static String get interstitial => _testInterstitial;
+  static String get native => _testNative;
+  static String get rewarded => _testRewarded;
+  static String get appOpen => _testAppOpen;
 }

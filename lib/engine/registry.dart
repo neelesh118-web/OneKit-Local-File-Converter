@@ -1,6 +1,6 @@
 import 'format.dart';
 
-/// The single source of truth for what OneKit can convert.
+/// The single source of truth for what the app can convert.
 ///
 /// Formats declare decode/encode capability; [pairs] is generated from those
 /// flags plus the cross-family rules below, so the catalogue always matches the
@@ -209,10 +209,10 @@ class FormatRegistry {
   //
   // Intentionally empty. Rasterising SVG needs a renderer none of the bundled
   // engines provide (the FFmpeg build has no librsvg, and the Dart decoder has
-  // no SVG support), so OneKit does not claim it.
+  // no SVG support), so the app does not claim it.
   static const vector = <FileFormat>[];
 
-  /// Every format OneKit knows about, deduplicated by extension.
+  /// Every format the app knows about, deduplicated by extension.
   static final List<FileFormat> all = () {
     final seen = <String>{};
     final out = <FileFormat>[];
@@ -268,7 +268,7 @@ class FormatRegistry {
   static final List<FileFormat> writable =
       List.unmodifiable(all.where((f) => f.write));
 
-  /// Cross-family conversions OneKit implements, as source family -> target
+  /// Cross-family conversions the app implements, as source family -> target
   /// families. These mirror the converters exactly; anything a converter does
   /// not claim is expressed in [crossFormats] instead, or left out.
   static const Map<Family, List<Family>> crossFamily = {

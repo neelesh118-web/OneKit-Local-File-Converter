@@ -6,7 +6,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../theme/app_theme.dart';
 import 'ad_ids.dart';
 
-/// Ad policy for OneKit, deliberately restrained.
+/// Ad policy, deliberately restrained.
 ///
 /// One anchored banner on the main surfaces, and an interstitial only after
 /// every [_interstitialEveryNConversions]th conversion with a hard cooldown.
@@ -43,14 +43,16 @@ class AdManager extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_initialised) return;
+    debugPrint('[AdManager] Initializing AdMob...');
     try {
       await MobileAds.instance.initialize();
       _initialised = true;
+      debugPrint('[AdManager] AdMob initialized successfully');
       _preloadInterstitial();
       notifyListeners();
     } catch (e) {
       // The app is fully usable without ads; never let this block startup.
-      debugPrint('AdMob init failed: $e');
+      debugPrint('[AdManager] AdMob init failed: $e');
     }
   }
 
@@ -132,6 +134,26 @@ class _AppBannerState extends State<AppBanner> {
   bool _requested = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Listen for AdManager initialization to reload when ads become available.
+    AdManager.instance.addListener(_onAdManagerChanged);
+  }
+
+  @override
+  void dispose() {
+    AdManager.instance.removeListener(_onAdManagerChanged);
+    _ad?.dispose();
+    super.dispose();
+  }
+
+  void _onAdManagerChanged() {
+    if (AdManager.instance.enabled && !_loaded && _ad == null) {
+      _load();
+    }
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_requested) return;
@@ -140,20 +162,29 @@ class _AppBannerState extends State<AppBanner> {
   }
 
   Future<void> _load() async {
-    if (!AdManager.instance.enabled) return;
+    if (!AdManager.instance.enabled) {
+      debugPrint('[AdBanner] AdManager not enabled');
+      return;
+    }
     final width = MediaQuery.sizeOf(context).width.truncate();
     final size = await AdSize.getLargeAnchoredAdaptiveBannerAdSize(width);
-    if (size == null || !mounted) return;
+    if (size == null || !mounted) {
+      debugPrint('[AdBanner] AdSize null or unmounted');
+      return;
+    }
 
+    debugPrint('[AdBanner] Loading banner: ${AdIds.banner}');
     final ad = BannerAd(
       adUnitId: AdIds.banner,
       size: size,
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (_) {
+          debugPrint('[AdBanner] Ad loaded successfully');
           if (mounted) setState(() => _loaded = true);
         },
-        onAdFailedToLoad: (ad, _) {
+        onAdFailedToLoad: (ad, error) {
+          debugPrint('[AdBanner] Ad failed to load: ${error.message}');
           ad.dispose();
           if (mounted) setState(() => _ad = null);
         },
@@ -161,12 +192,6 @@ class _AppBannerState extends State<AppBanner> {
     );
     _ad = ad;
     await ad.load();
-  }
-
-  @override
-  void dispose() {
-    _ad?.dispose();
-    super.dispose();
   }
 
   @override
