@@ -34,7 +34,7 @@ android {
         applicationId = "com.onekit.converter"
         // ffmpeg-kit requires API 24 or newer.
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
