@@ -178,9 +178,8 @@ class _PairsPageState extends State<PairsPage> {
                             20,
                             MediaQuery.viewPaddingOf(context).bottom + 24,
                           ),
-                          itemCount: _results.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemCount: _results.length + 1,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (context, i) => i < _results.length
                               ? _PairRow(
                                   pair: _results[i],
@@ -190,6 +189,7 @@ class _PairsPageState extends State<PairsPage> {
                                   padding: EdgeInsets.symmetric(vertical: 8),
                                   child: AppBanner(),
                                 ),
+                        ),
                 ),
               ],
             ),
