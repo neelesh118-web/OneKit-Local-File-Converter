@@ -32,5 +32,8 @@ Future<void> main() async {
     ),
   );
 
-
+  // TODO(screenshots): Re-enable ads after taking screenshots.
+  // WidgetsBinding.instance.addPostFrameCallback((_) {
+  //   unawaited(AdManager.instance.initialize());
+  // });
 }
