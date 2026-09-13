@@ -10,9 +10,10 @@ import 'converters/data_converter.dart';
 import 'converters/document_converter.dart';
 import 'converters/ebook_converter.dart';
 import 'converters/ffmpeg_converter.dart';
+import 'converters/font_converter.dart';
 import 'converters/pdf_converter.dart';
 import 'converters/subtitle_converter.dart';
-import 'format.dart';
+import 'format.dart' show ConversionPair, Family, FileFormat;
 import 'job.dart';
 
 /// Routes a job to the converter that handles it and runs it.
@@ -26,6 +27,7 @@ class ConversionEngine {
   static const List<FileConverter> converters = [
     PdfConverter(),
     EbookConverter(),
+    FontConverter(),
     SubtitleConverter(),
     DocumentConverter(),
     DataConverter(),
@@ -44,6 +46,14 @@ class ConversionEngine {
   }
 
   bool canConvert(FileFormat from, FileFormat to) => resolve(from, to) != null;
+
+  /// Maximum size for Dart-based converters (PDF, documents, archives).
+  /// Above this, only FFmpeg-based conversions (audio/video/image) are
+  /// allowed because the Dart decoders load entire files into memory.
+  static const int _maxDartConverterBytes = 500 * 1024 * 1024; // 500 MB
+
+  /// Formats handled by FFmpeg which streams data and can handle large files.
+  static const _ffmpegFamilies = {Family.audio, Family.video, Family.image};
 
   /// Runs [job] to completion, mutating its status, progress and output fields.
   ///
@@ -66,11 +76,25 @@ class ConversionEngine {
       final from = job.source;
       if (from == null) {
         throw ConversionException(
-          'OneKit does not recognise the "${p.extension(job.sourcePath)}" file type.',
+          'This app does not recognise the "${p.extension(job.sourcePath)}" file type.',
         );
       }
       if (!await File(job.sourcePath).exists()) {
         throw ConversionException('The source file is no longer available.');
+      }
+
+      // Large-file gate: Dart-based converters load entire files into memory,
+      // so files above the limit are restricted to FFmpeg-based conversions
+      // which stream data through pipes.
+      final sourceSize = await File(job.sourcePath).length();
+      if (sourceSize > _maxDartConverterBytes) {
+        final converter = resolve(from, job.target);
+        if (converter != null && !_ffmpegFamilies.contains(from.family)) {
+          throw ConversionException(
+            '${from.upper} files over ${humanBytes(_maxDartConverterBytes)} are too large '
+            'for this converter. Try an audio, video, or image conversion instead.',
+          );
+        }
       }
 
       final converter = resolve(from, job.target);
@@ -171,12 +195,12 @@ class ConversionEngine {
   /// runtime permission is needed; Files can export anywhere from there.
   static Future<Directory> outputDir() async {
     final base = await getApplicationDocumentsDirectory();
-    return Directory(p.join(base.path, 'OneKit'));
+    return Directory(p.join(base.path, 'LocalFileConverter'));
   }
 
   static Future<Directory> tempDir() async {
     final base = await getTemporaryDirectory();
-    return Directory(p.join(base.path, 'onekit_work'));
+    return Directory(p.join(base.path, 'lfc_work'));
   }
 
   /// Atomically reserves a path so concurrent batch workers cannot collide.

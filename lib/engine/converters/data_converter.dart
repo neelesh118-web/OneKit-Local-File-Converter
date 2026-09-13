@@ -85,7 +85,7 @@ class DataConverter extends FileConverter {
       case 'toml':
         return _parseToml(text);
       default:
-        throw ConversionException('OneKit cannot read ${ext.toUpperCase()} as data.');
+        throw ConversionException('This app cannot read ${ext.toUpperCase()} as data.');
     }
   }
 
@@ -260,7 +260,7 @@ class DataConverter extends FileConverter {
       case 'sql':
         return _toSql(value);
       default:
-        throw ConversionException('OneKit cannot write ${ext.toUpperCase()} as data.');
+        throw ConversionException('This app cannot write ${ext.toUpperCase()} as data.');
     }
   }
 

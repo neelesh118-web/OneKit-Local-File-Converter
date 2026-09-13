@@ -29,7 +29,7 @@ Future<void> main() async {
   runApp(
     ChangeNotifierProvider<SettingsStore>.value(
       value: settings,
-      child: const OneKitApp(),
+      child: const LocalFileConverterApp(),
     ),
   );
 

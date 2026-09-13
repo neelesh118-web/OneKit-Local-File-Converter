@@ -10,19 +10,20 @@ import 'features/convert/convert_page.dart';
 import 'features/files/files_page.dart';
 import 'features/history/history_page.dart';
 import 'features/home/home_page.dart';
+import 'features/home/onboarding_page.dart';
 import 'features/home/pairs_page.dart';
 import 'features/home/splash_page.dart';
 import 'features/settings/settings_page.dart';
 import 'shell.dart';
 
-class OneKitApp extends StatelessWidget {
-  const OneKitApp({super.key});
+class LocalFileConverterApp extends StatelessWidget {
+  const LocalFileConverterApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsStore>();
     return MaterialApp.router(
-      title: 'OneKit',
+      title: '100% Local File Converter',
       debugShowCheckedModeBanner: false,
       themeMode: settings.themeMode,
       theme: AppTheme.light(),
@@ -46,6 +47,7 @@ final _shellKey = GlobalKey<NavigatorState>();
 final GoRouter _router = GoRouter(
   initialLocation: '/splash',
   routes: [
+    GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingPage()),
     GoRoute(path: '/splash', builder: (_, __) => const SplashPage()),
     GoRoute(
       path: '/convert',

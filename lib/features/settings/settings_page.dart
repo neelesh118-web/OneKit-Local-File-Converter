@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/ads/ads.dart';
 import '../../core/data/history_store.dart';
 import '../../core/data/settings_store.dart';
 import '../../core/preview/preview_service.dart';
@@ -129,7 +130,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       leading: const Icon(Icons.folder_outlined),
                       title: const Text('Output folder'),
                       subtitle: Text(
-                        settings.outputDir ?? 'OneKit folder in app storage (default)',
+                        settings.outputDir ?? 'App folder in storage (default)',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 12.5, color: t.textFaint),
@@ -173,7 +174,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 6),
                           Text(
-                            'Every conversion runs on your phone. OneKit has no server, no account and no upload step. '
+                            'Every conversion runs on your phone. This app has no server, no account and no upload step. '
                             'Your history and settings are stored in app-private storage only.',
                             style: TextStyle(fontSize: 13, height: 1.5, color: t.textFaint),
                           ),
@@ -204,7 +205,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
 
-              const SectionTitle('Support OneKit'),
+              const SectionTitle('Support'),
               const SupportCard(),
               const SizedBox(height: 10),
               Panel(
@@ -216,6 +217,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   onTap: () => context.push('/about'),
                 ),
               ),
+              const SizedBox(height: 10),
+              const AppBanner(),
               const SizedBox(height: 20),
             ],
           ),

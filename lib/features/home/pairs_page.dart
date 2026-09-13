@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/ads/ads.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/starfield.dart';
@@ -179,11 +180,16 @@ class _PairsPageState extends State<PairsPage> {
                           ),
                           itemCount: _results.length,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (context, i) => _PairRow(
-                            pair: _results[i],
-                            onTap: () => _run(_results[i]),
-                          ),
-                        ),
+                          itemCount: _results.length + 1,
+                          itemBuilder: (context, i) => i < _results.length
+                              ? _PairRow(
+                                  pair: _results[i],
+                                  onTap: () => _run(_results[i]),
+                                )
+                              : const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 8),
+                                  child: AppBanner(),
+                                ),
                 ),
               ],
             ),

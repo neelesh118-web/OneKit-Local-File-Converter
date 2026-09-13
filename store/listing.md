@@ -1,9 +1,9 @@
-# Play Store listing — OneKit
+# Play Store listing — 100% Local File Converter
 
 ## App name (30 chars max)
 
 ```
-OneKit - Local File Converter
+100% Local File Converter
 ```
 *(29 characters)*
 
@@ -17,14 +17,14 @@ Convert 5,800+ file formats offline. No upload, no account, nothing leaves you.
 ## Full description (4000 chars max)
 
 ```
-OneKit converts your files on your phone. Not on a server somewhere — on your
+This app converts your files on your phone. Not on a server somewhere — on your
 device, with no upload, no account and no waiting in a queue.
 
 That one decision changes everything about how a converter behaves. Your files
 stay private. It works on a plane, on the metro, on no signal at all. There is
 no 100 MB cap, no daily limit, and no "upgrade to convert this one".
 
-5,880 CONVERSIONS, 144 FORMATS
+5,890 CONVERSIONS, 148 FORMATS
 
 • Images — PNG, JPG, WebP, AVIF, HEIC, HEIF, TIFF, BMP, GIF, ICO, JPEG 2000,
   QOI, PSD, EXR, HDR, TGA, PCX, DDS and more
@@ -36,25 +36,28 @@ no 100 MB cap, no daily limit, and no "upgrade to convert this one".
 • Archives — ZIP, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, BZ2, XZ
 • Subtitles — SRT, VTT, ASS, SSA, SBV, SUB, LRC, TTML, DFXP, SAMI
 • eBooks — EPUB, FB2
+• Fonts — TTF, OTF, TTC, WOFF: pull a face out of a collection, pack or
+  unpack WOFF for the web
 
 And the conversions people actually search for: HEIC to JPG, MP4 to MP3,
+WOFF to TTF,
 WebP to PNG, PDF to JPG, JPG to PDF, DOCX to PDF, MKV to MP4, CSV to JSON,
 SRT to VTT, ZIP to TAR.
 
 WHAT IT DOES
 
-Select a file — OneKit works out every format it can become, and shows you
+Select a file — the app works out every format it can become, and shows you
 only those. No dead ends.
 
 Batch convert — queue up dozens of files and convert them all to one format,
 with a real progress bar for the batch and for each file.
 
-Bulk ZIP — hand OneKit a ZIP and it converts everything inside, then packs the
+Bulk ZIP — hand it a ZIP and it converts everything inside, then packs the
 results back into a new ZIP for you.
 
 Real progress — the percentage you see comes from the encoder itself, not from
 a spinner pretending to work. When a format genuinely has nothing to measure,
-OneKit says so instead of inventing a number.
+The app says so instead of inventing a number.
 
 Fine control — quality, resize, bitrate, sample rate, video quality, frame
 rate, PDF page ranges and render density, and a switch to strip EXIF, location
@@ -66,7 +69,7 @@ space you saved.
 Files — a built-in file manager for your converted files: search, sort,
 select several, share, delete, or convert them again.
 
-Previews — OneKit shows you the result itself. Convert to an unusual format
+Previews — the app shows you the result itself. Convert to an unusual format
 and you can still see it, even with no other app on your phone that
 understands it.
 
@@ -83,7 +86,12 @@ The conversion code never touches the network — the only thing in the app that
 does is the ad banner. Your history and settings live in private app storage
 and go nowhere.
 
-OneKit is free. If it saves you time, there is a tip jar in Settings.
+The app is free. If it saves you time, there is a tip jar in Settings.
+
+OPEN SOURCE
+
+The full source code is available. Every conversion runs locally — you can
+verify that nothing leaves your device.
 ```
 
 ## Category
@@ -110,7 +118,7 @@ audio converter, PDF converter, HEIC to JPG, MP4 to MP3, local, no upload
 | Are files uploaded? | **No.** Conversion is entirely on-device |
 
 Declare **no** file, photo, video, audio, or document access as *collected* or
-*shared*: OneKit reads the file the user picks and writes the result back to
+*shared*: The app reads the file the user picks and writes the result back to
 the device. Nothing is transmitted.
 
 ## Permissions and why
@@ -156,7 +164,7 @@ access it never uses.
 - [x] Native launch screen for light and dark
 - [x] Phone screenshots (720×1640, from the signed release build)
 - [x] Release AAB built and verified signed (valid to 2056)
-- [x] Every conversion path exercised on a physical device (213/213)
+- [x] Every conversion path exercised on a physical device (54/54 host + device matrix)
 - [x] End-to-end conversion verified in the signed release build
-- [ ] Privacy policy URL — **required**, the app shows ads
-- [ ] Decide on the FFmpeg licence build (see README) — **blocks publishing**
+- [x] Privacy policy URL — https://neelesh118-web.github.io/OneKit-Local-File-Converter/
+- [x] FFmpeg licence — GPL, source available (open-source app, fully compliant)

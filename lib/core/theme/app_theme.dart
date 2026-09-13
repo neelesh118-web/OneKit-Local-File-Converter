@@ -22,8 +22,8 @@ class Mono {
 
 /// Semantic tokens resolved per brightness. Widgets read these instead of
 /// branching on `Theme.of(context).brightness` everywhere.
-class OneKitTokens extends ThemeExtension<OneKitTokens> {
-  const OneKitTokens({
+class AppTokens extends ThemeExtension<AppTokens> {
+  const AppTokens({
     required this.background,
     required this.surface,
     required this.surfaceRaised,
@@ -54,7 +54,7 @@ class OneKitTokens extends ThemeExtension<OneKitTokens> {
   final Color starColor;
   final bool isDark;
 
-  static const dark = OneKitTokens(
+  static const dark = AppTokens(
     background: Mono.black,
     surface: Mono.ink,
     surfaceRaised: Mono.slate,
@@ -68,7 +68,7 @@ class OneKitTokens extends ThemeExtension<OneKitTokens> {
     isDark: true,
   );
 
-  static const light = OneKitTokens(
+  static const light = AppTokens(
     background: Mono.white,
     surface: Mono.cloud,
     surfaceRaised: Mono.white,
@@ -83,17 +83,17 @@ class OneKitTokens extends ThemeExtension<OneKitTokens> {
   );
 
   @override
-  ThemeExtension<OneKitTokens> copyWith() => this;
+  ThemeExtension<AppTokens> copyWith() => this;
 
   @override
-  ThemeExtension<OneKitTokens> lerp(ThemeExtension<OneKitTokens>? other, double t) {
-    if (other is! OneKitTokens) return this;
+  ThemeExtension<AppTokens> lerp(ThemeExtension<AppTokens>? other, double t) {
+    if (other is! AppTokens) return this;
     return t < 0.5 ? this : other;
   }
 }
 
 extension TokenLookup on BuildContext {
-  OneKitTokens get tokens => Theme.of(this).extension<OneKitTokens>()!;
+  AppTokens get tokens => Theme.of(this).extension<AppTokens>()!;
 }
 
 class AppTheme {
@@ -105,13 +105,13 @@ class AppTheme {
 
   /// Built once. These were reconstructed on every settings change, and each
   /// new ThemeData identity invalidates every `Theme.of` dependent in the tree.
-  static final ThemeData darkTheme = _build(OneKitTokens.dark);
-  static final ThemeData lightTheme = _build(OneKitTokens.light);
+  static final ThemeData darkTheme = _build(AppTokens.dark);
+  static final ThemeData lightTheme = _build(AppTokens.light);
 
   static ThemeData dark() => darkTheme;
   static ThemeData light() => lightTheme;
 
-  static ThemeData _build(OneKitTokens t) {
+  static ThemeData _build(AppTokens t) {
     final scheme = ColorScheme(
       brightness: t.isDark ? Brightness.dark : Brightness.light,
       primary: t.accent,
@@ -285,7 +285,7 @@ class AppTheme {
     );
   }
 
-  static TextTheme _text(TextTheme base, OneKitTokens t) {
+  static TextTheme _text(TextTheme base, AppTokens t) {
     return base
         .apply(bodyColor: t.textPrimary, displayColor: t.textPrimary)
         .copyWith(

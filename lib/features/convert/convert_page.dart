@@ -191,7 +191,7 @@ class _ConvertPageState extends State<ConvertPage> {
               title: 'Unsupported file',
               message: _sourcePath.isEmpty
                   ? 'No file was selected.'
-                  : 'OneKit does not recognise "${p.extension(_sourcePath)}" yet.',
+                  : 'This app does not recognise "${p.extension(_sourcePath)}" yet.',
               action: FilledButton(onPressed: () => context.go('/'), child: const Text('Back to Convert')),
             ),
           ),
@@ -409,7 +409,7 @@ class _ConvertPageState extends State<ConvertPage> {
               const SizedBox(height: 24),
               if (ok) ..._successBody(job) else _failureBody(job),
               const SizedBox(height: 20),
-              const OneKitBanner(),
+              const AppBanner(),
               const SizedBox(height: 8),
               const SupportCard(compact: true),
             ],

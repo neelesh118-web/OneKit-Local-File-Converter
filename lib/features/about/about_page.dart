@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/ads/ads.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/brand.dart';
 import '../../core/widgets/common.dart';
@@ -36,7 +37,7 @@ class AboutPage extends StatelessWidget {
                     ),
                     children: [
                       const SizedBox(height: 12),
-                      const Center(child: OneKitLockup(markSize: 76)),
+                      const Center(child: AppLockup(markSize: 76)),
                       const SizedBox(height: 26),
                       Row(
                         children: [
@@ -62,13 +63,15 @@ class AboutPage extends StatelessWidget {
                       const SectionTitle('How it works'),
                       Panel(
                         child: Text(
-                          'OneKit converts files entirely on your device. There is no upload, no queue on '
+                          'This app converts files entirely on your device. There is no upload, no queue on '
                           'someone else’s server, and no account. That means your files stay private, it '
                           'works with no signal, and there are no size limits beyond your own storage.',
                           style: TextStyle(fontSize: 14, height: 1.55, color: t.textSecondary),
                         ),
                       ),
                       const SectionTitle('What it covers'),
+                      const _PairBreakdown(),
+                      const SizedBox(height: 10),
                       for (final f in Family.values)
                         if (FormatRegistry.family(f).isNotEmpty)
                           Padding(
@@ -115,16 +118,18 @@ class AboutPage extends StatelessWidget {
                           trailing: const Icon(Icons.chevron_right_rounded),
                           onTap: () => showLicensePage(
                             context: context,
-                            applicationName: 'OneKit',
+                            applicationName: '100% Local File Converter',
                             applicationVersion: '1.0.0',
                             applicationLegalese: 'Local File Converter',
                           ),
                         ),
                       ),
+                      const SizedBox(height: 10),
+                      const AppBanner(),
                       const SizedBox(height: 22),
                       Center(
                         child: Text(
-                          'OneKit 1.0.0',
+                          '100% Local File Converter 1.0.0',
                           style: TextStyle(fontSize: 12, color: t.textFaint),
                         ),
                       ),
@@ -177,6 +182,124 @@ class _FamilyLine extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Same-family vs cross-family split of the conversion catalogue, computed
+/// from the registry so it can never disagree with what the engines do.
+class _PairBreakdown extends StatelessWidget {
+  const _PairBreakdown();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final total = FormatRegistry.pairCount;
+    final same = FormatRegistry.sameFamilyPairCount;
+    final cross = FormatRegistry.crossFamilyPairTotal;
+    final routes = FormatRegistry.crossFamilyPairCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: SizedBox(
+              height: 6,
+              child: Row(
+                children: [
+                  if (same > 0) Expanded(flex: same, child: ColoredBox(color: t.textPrimary)),
+                  if (cross > 0) Expanded(flex: cross, child: ColoredBox(color: t.textFaint)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          _LegendRow(
+            color: t.textPrimary,
+            value: same,
+            total: total,
+            label: 'Same family',
+            detail: 'PNG → JPG, MKV → MP4',
+          ),
+          const SizedBox(height: 8),
+          _LegendRow(
+            color: t.textFaint,
+            value: cross,
+            total: total,
+            label: 'Cross family',
+            detail: 'MP4 → MP3, PDF → PNG',
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 14,
+            runSpacing: 4,
+            children: [
+              for (final e in routes)
+                Text(
+                  '→ ${e.key.label} ${e.value}',
+                  style: TextStyle(fontSize: 11, color: t.textFaint),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One line of the breakdown legend: swatch, count, share, examples.
+class _LegendRow extends StatelessWidget {
+  const _LegendRow({
+    required this.color,
+    required this.value,
+    required this.total,
+    required this.label,
+    required this.detail,
+  });
+
+  final Color color;
+  final int value;
+  final int total;
+  final String label;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final pct = total == 0 ? 0.0 : value * 100 / total;
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          '$value',
+          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: t.textPrimary),
+        ),
+        const SizedBox(width: 7),
+        Text(
+          '$label · ${pct.toStringAsFixed(1)}%',
+          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: t.textSecondary),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            detail,
+            style: TextStyle(fontSize: 11, color: t.textFaint),
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
+import '../../core/data/settings_store.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/brand.dart';
 import '../../core/widgets/pulse.dart';
 import '../../core/widgets/starfield.dart';
-import '../../engine/registry.dart';
 
 /// Branding splash. The complete lockup settles early, then stays visible so
 /// the native Android launch icon does not feel like it is being skipped.
@@ -19,9 +20,9 @@ class SplashPage extends StatefulWidget {
 class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   late final AnimationController _intro = AnimationController(
     vsync: this,
-    // Long enough for the native icon splash to hand off into this animation
-    // and for the full lockup to be seen clearly on a real phone.
-    duration: const Duration(seconds: 4),
+    // Short enough that the phone does not feel stuck, but long enough
+    // for the native launch icon to hand off smoothly.
+    duration: const Duration(milliseconds: 2500),
   );
   late final AnimationController _breathe = AnimationController(
     vsync: this,
@@ -35,9 +36,10 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   }
 
   Future<void> _go() async {
-    // Keep the full branding screen visible for this four-second trial.
     await _intro.forward().orCancel.catchError((_) {});
-    if (mounted) context.go('/');
+    if (!mounted) return;
+    final onboarded = context.read<SettingsStore>().onboarded;
+    context.go(onboarded ? '/' : '/onboarding');
   }
 
   @override
@@ -57,9 +59,16 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
         children: [
           const Starfield(density: 1.35, speed: 1.6),
           SafeArea(
-            child: Column(
-              children: [
-                const Spacer(flex: 3),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final bottomPad = MediaQuery.viewPaddingOf(context).bottom;
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: IntrinsicHeight(
+                      child: Column(
+                        children: [
+                          const Spacer(flex: 3),
                 AnimatedBuilder(
                   animation: _breathe,
                   builder: (context, child) => Transform.scale(
@@ -69,7 +78,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                   child: const PulseHalo(
                     size: 190,
                     rings: 3,
-                    child: OneKitMark(size: 96),
+                    child: AppMark(size: 96),
                   ),
                 ),
                 const SizedBox(height: 26),
@@ -79,16 +88,9 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                       TextSpan(
                         children: [
                           TextSpan(
-                            text: 'One',
+                            text: '100%',
                             style: TextStyle(
                               fontWeight: FontWeight.w800,
-                              color: t.textPrimary,
-                            ),
-                          ),
-                          TextSpan(
-                            text: 'Kit',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w300,
                               color: t.textPrimary,
                             ),
                           ),
@@ -102,11 +104,11 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'LOCAL FILE CONVERTER',
+                      'Local File Converter',
                       style: TextStyle(
-                        fontSize: 11,
-                        letterSpacing: 4.2,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        letterSpacing: 2.0,
+                        fontWeight: FontWeight.w500,
                         color: t.textFaint,
                       ),
                     ),
@@ -117,9 +119,8 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                   padding: const EdgeInsets.only(bottom: 36),
                   child: Column(
                     children: [
-                      _Pill(
-                        text:
-                            '${_formatCount(FormatRegistry.pairCount)} conversions',
+                      const _Pill(
+                        text: '5,000+ conversions',
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -143,8 +144,12 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                       ),
                     ],
                   ),
-                ),
-              ],
+                ),                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -152,10 +157,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
     );
   }
 }
-
-String _formatCount(int n) => n >= 1000
-    ? '${(n / 1000).floor()},${(n % 1000).toString().padLeft(3, '0')}'
-    : '$n';
 
 class _Pill extends StatelessWidget {
   const _Pill({required this.text});

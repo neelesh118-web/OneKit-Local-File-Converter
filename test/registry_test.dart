@@ -27,6 +27,28 @@ void main() {
     expect(FormatRegistry.pairs.any((p) => p.id.contains('svg')), isFalse);
   });
 
+  test('pair composition adds up and matches the matrix', () {
+    final total = FormatRegistry.pairCount;
+    final same = FormatRegistry.sameFamilyPairCount;
+    final cross = FormatRegistry.crossFamilyPairTotal;
+
+    expect(same + cross, total);
+    expect(FormatRegistry.crossFamilyPairCounts.values.fold(0, (a, b) => a + b), cross);
+
+    // Recompute independently and compare.
+    var sameRecount = 0;
+    final crossRecount = <Family, int>{};
+    for (final p in FormatRegistry.pairs) {
+      if (p.isCrossFamily) {
+        crossRecount.update(p.to.family, (n) => n + 1, ifAbsent: () => 1);
+      } else {
+        sameRecount++;
+      }
+    }
+    expect(same, sameRecount);
+    expect(FormatRegistry.crossFamilyPairCounts, crossRecount);
+  });
+
   test('headline pairs are present', () {
     final ids = FormatRegistry.pairs.map((p) => p.id).toSet();
     for (final id in [

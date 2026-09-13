@@ -1,9 +1,9 @@
-# OneKit — Local File Converter
+# 100% Local File Converter
 
 A file converter for Android that runs **entirely on the device**. No upload, no
 server, no account, no size limit beyond your own storage.
 
-**5,880 conversions across 144 formats**, generated from a capability registry
+**5,890 conversions across 148 formats**, generated from a capability registry
 rather than hand-listed, so the catalogue can never advertise something the
 engines cannot actually do.
 
@@ -21,6 +21,7 @@ engines cannot actually do.
 | Archive | 9 | ZIP, TAR, TGZ, TBZ, TXZ, GZ, BZ2, XZ, ZLIB |
 | Subtitle | 10 | SRT, VTT, ASS, SSA, SBV, SUB, LRC, TTML, DFXP, SAMI |
 | eBook | 2 | EPUB, FB2 |
+| Font | 4 | TTF, OTF, TTC, WOFF — collection extraction and WOFF container work |
 
 Plus cross-family routes: video → audio, video → image/GIF, image → video,
 image → PDF, PDF → image/text/data/EPUB, document → eBook, subtitle → data.
@@ -31,12 +32,19 @@ read them. The registry is only allowed to advertise routes a converter
 actually claims, and a test asks FFmpeg directly which codecs it contains and
 fails if the catalogue overstates it.
 
+The same rule shapes the font family. TTC, WOFF, TTF and OTF are all sfnt
+containers, so extracting a collection's face or packing WOFF's zlib tables
+is honest container work — but TTF ↔ OTF means translating glyph outlines
+(quadratic glyf versus cubic CFF), which is font compiling. Those two pairs
+are the only ones removed from the matrix by hand, and the converter still
+refuses at run time to label a face with the wrong outline format.
+
 ## Features
 
 - **Single convert** — pick a file, see every format it can become, watch a real
   percentage (from ffmpeg's own statistics stream, never a fake timer).
 - **Batch** — many files at once, one shared target, honest overall progress.
-- **Bulk ZIP** — drop in a ZIP and OneKit converts everything inside it, then
+- **Bulk ZIP** — drop in a ZIP and the app converts everything inside it, then
   packs the results back into a ZIP.
 - **History** — every conversion, with time taken and space saved.
 - **Files** — a file manager over the output folder: search, sort, multi-select,
@@ -44,7 +52,7 @@ fails if the catalogue overstates it.
 - **Per-format options** — quality, resize, bitrate, sample rate, CRF, frame
   rate, PDF page ranges and render DPI, metadata stripping.
 - **Built-in previews** — converting to QOI or DPX should not mean you can
-  never look at the result. OneKit renders previews itself: images and video
+  never look at the result. The app renders previews itself: images and video
   frames and PDF pages, the opening lines of text and data files, and the
   contents of archives. No other app required.
 - **Monochrome design** — the light and dark themes are exact inversions of one
@@ -92,6 +100,7 @@ lib/
       archive_converter.dart  containers and single streams
       pdf_converter.dart      PDF in and out
       ebook_converter.dart    EPUB/FB2
+      font_converter.dart     TTC / WOFF / sfnt container work
   core/       theme, widgets (starfield, pulse, brand), ads, storage
   features/   home, convert, batch, history, files, settings, about
 ```
@@ -156,11 +165,11 @@ still compiles.
 
 ## Licensing note
 
-OneKit bundles `ffmpeg_kit_flutter_new`, which ships the **full-GPL** FFmpeg
+This app bundles `ffmpeg_kit_flutter_new`, which ships the **full-GPL** FFmpeg
 build (x264, x265, libwebp, libaom, OpenJPEG). That gives the widest format
-coverage, and it means distributing the app carries **GPLv3 obligations**. If
-you need to ship closed-source, swap to an LGPL FFmpeg build — the trade-off is
-losing H.264/H.265 encoding.
+coverage, and it means distributing the app carries **GPLv3 obligations**. The
+app is open-source, so this is fully compliant — source code is available at
+the repository URL.
 
 ## Privacy
 

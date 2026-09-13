@@ -190,6 +190,21 @@ class FormatRegistry {
     FileFormat('smi', 'SAMI Caption', Family.subtitle, engine: Engine.dartText, mime: 'application/smil'),
   ];
 
+  // ------------------------------------------------------------------ font
+  //
+  // Container work only, by design. TTF and OTF differ in their glyph outline
+  // format — quadratic 'glyf' versus cubic 'CFF' — and translating between the
+  // two means font compiling, which no bundled engine can do. What pure Dart
+  // can do honestly is unpack and repack the sfnt container: extracting the
+  // faces inside a TrueType Collection, and WOFF's zlib-compressed tables.
+  // TTF <-> OTF is therefore never advertised.
+  static const font = <FileFormat>[
+    FileFormat('ttf', 'TrueType Font', Family.font, engine: Engine.dartFont, mime: 'font/ttf'),
+    FileFormat('otf', 'OpenType Font', Family.font, engine: Engine.dartFont, mime: 'font/otf'),
+    FileFormat('ttc', 'TrueType Collection', Family.font, engine: Engine.dartFont, mime: 'font/collection'),
+    FileFormat('woff', 'Web Open Font', Family.font, engine: Engine.dartFont, mime: 'font/woff'),
+  ];
+
   // ---------------------------------------------------------------- vector
   //
   // Intentionally empty. Rasterising SVG needs a renderer none of the bundled
@@ -201,7 +216,7 @@ class FormatRegistry {
   static final List<FileFormat> all = () {
     final seen = <String>{};
     final out = <FileFormat>[];
-    for (final f in [...image, ...audio, ...video, ...document, ...data, ...archive, ...ebook, ...subtitle, ...vector]) {
+    for (final f in [...image, ...audio, ...video, ...document, ...data, ...archive, ...ebook, ...subtitle, ...font, ...vector]) {
       if (seen.add(f.ext)) out.add(f);
     }
     return List<FileFormat>.unmodifiable(out);
@@ -301,6 +316,9 @@ class FormatRegistry {
     for (final src in all) {
       if (!src.read) continue;
       for (final dst in family(src.family)) {
+        // Font targets have their own exclusion set: TTF <-> OTF is outline
+        // translation, which the engines cannot honestly perform.
+        if (fontToFontExcluded.contains('${src.ext}>${dst.ext}')) continue;
         add(src, dst);
       }
       for (final fam in crossFamily[src.family] ?? const <Family>[]) {
@@ -316,7 +334,51 @@ class FormatRegistry {
     return List<ConversionPair>.unmodifiable(out);
   }();
 
+  /// Pairs the matrix would normally generate but the engines cannot honestly
+  /// perform. TTF and OTF differ in glyph outline format — quadratic 'glyf'
+  /// versus cubic 'CFF' — so moving between them is font compiling, not
+  /// container repacking, and no bundled engine can do it. TTC and WOFF are
+  /// deliberately not excluded: they carry either outline format, and the
+  /// FontConverter checks the flavor against the requested target at run time.
+  static const Set<String> fontToFontExcluded = {'ttf>otf', 'otf>ttf'};
+
+  /// Triggers the lazy static initialisers without blocking the caller.
+  /// Call this from a post-frame callback after the splash has drawn so
+  /// the heavy pair-matrix computation happens off the first frame.
+  static void warmUp() {
+    // Touch every lazy static so the Dart VM compiles and caches them.
+    // ignore: unnecessary_statements
+    pairCount;
+    // ignore: unnecessary_statements
+    readable;
+    // ignore: unnecessary_statements
+    writable;
+  }
+
   static int get pairCount => pairs.length;
+
+  /// Pairs whose source and target belong to the same family (PNG -> JPG).
+  static final int sameFamilyPairCount = () {
+    var n = 0;
+    for (final p in pairs) {
+      if (!p.isCrossFamily) n++;
+    }
+    return n;
+  }();
+
+  /// Pairs that cross a family boundary (MP4 -> MP3, PDF -> PNG), grouped by
+  /// the target family. Derived from [pairs], so it can never drift from what
+  /// the engines actually implement.
+  static final Map<Family, int> crossFamilyPairCounts = () {
+    final m = <Family, int>{};
+    for (final p in pairs) {
+      if (p.isCrossFamily) m.update(p.to.family, (n) => n + 1, ifAbsent: () => 1);
+    }
+    return Map<Family, int>.unmodifiable(m);
+  }();
+
+  /// Cross-family pairs, i.e. [pairCount] minus [sameFamilyPairCount].
+  static int get crossFamilyPairTotal => pairCount - sameFamilyPairCount;
 
   static final Map<String, List<FileFormat>> _targetCache = {};
 

@@ -255,7 +255,7 @@ class PreviewSheet extends StatelessWidget {
             FilePreview(path: path, format: format, expanded: true),
             const SizedBox(height: 10),
             Text(
-              'Rendered by OneKit on this device.',
+              'Rendered on this device.',
               style: TextStyle(fontSize: 12, color: t.textFaint),
             ),
           ],

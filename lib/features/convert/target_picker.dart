@@ -35,6 +35,17 @@ class _TargetPickerState extends State<TargetPicker> {
     super.dispose();
   }
 
+  /// Popularity ranking: formats users convert to most often.
+  /// Lower number = more popular. Unlisted formats get 999.
+  static const _popularity = {
+    'jpg': 1, 'jpeg': 2, 'png': 3, 'pdf': 4, 'mp3': 5,
+    'mp4': 6, 'webp': 7, 'gif': 8, 'txt': 9, 'html': 10,
+    'docx': 11, 'csv': 12, 'json': 13, 'wav': 14, 'flac': 15,
+    'zip': 16, 'webm': 17, 'tiff': 18, 'bmp': 19, 'svg': 20,
+    'mkv': 21, 'avi': 22, 'mov': 23, 'aac': 24, 'ogg': 25,
+    'md': 26, 'xml': 27, 'yaml': 28, 'rtf': 29, 'epub': 30,
+  };
+
   List<MapEntry<Family, List<FileFormat>>> get _groups {
     final q = _query.toLowerCase().trim();
     final filtered = q.isEmpty
@@ -46,6 +57,15 @@ class _TargetPickerState extends State<TargetPicker> {
     final byFamily = <Family, List<FileFormat>>{};
     for (final f in filtered) {
       byFamily.putIfAbsent(f.family, () => []).add(f);
+    }
+
+    // Sort each family's formats by popularity.
+    for (final entry in byFamily.entries) {
+      entry.value.sort((a, b) {
+        final pa = _popularity[a.ext] ?? 999;
+        final pb = _popularity[b.ext] ?? 999;
+        return pa.compareTo(pb);
+      });
     }
 
     final ordered = byFamily.entries.toList()

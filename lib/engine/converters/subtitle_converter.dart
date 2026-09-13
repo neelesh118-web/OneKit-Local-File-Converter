@@ -83,7 +83,7 @@ class SubtitleConverter extends FileConverter {
       'lrc' => _parseLrc(s),
       'ttml' || 'dfxp' => _parseTtml(s),
       'smi' => _parseSami(s),
-      _ => throw ConversionException('OneKit cannot read ${ext.toUpperCase()} subtitles.'),
+      _ => throw ConversionException('This app cannot read ${ext.toUpperCase()} subtitles.'),
     };
   }
 
@@ -309,7 +309,7 @@ class SubtitleConverter extends FileConverter {
       'lrc' => _writeLrc(cues),
       'ttml' || 'dfxp' => _writeTtml(cues),
       'smi' => _writeSami(cues),
-      _ => throw ConversionException('OneKit cannot write ${ext.toUpperCase()} subtitles.'),
+      _ => throw ConversionException('This app cannot write ${ext.toUpperCase()} subtitles.'),
     };
   }
 
@@ -349,7 +349,7 @@ class SubtitleConverter extends FileConverter {
 
     final b = StringBuffer()
       ..writeln('[Script Info]')
-      ..writeln('; Converted by OneKit')
+      ..writeln('; Converted by Local File Converter')
       ..writeln('ScriptType: ${v4plus ? 'v4.00+' : 'v4.00'}')
       ..writeln('WrapStyle: 0')
       ..writeln('ScaledBorderAndShadow: yes')
@@ -400,7 +400,7 @@ class SubtitleConverter extends FileConverter {
   }
 
   static String _writeLrc(List<Cue> cues) {
-    final b = StringBuffer('[re:OneKit]\n');
+    final b = StringBuffer('[re:LocalFileConverter]\n');
     for (final c in cues) {
       final m = c.start.inMinutes;
       final s = c.start.inSeconds % 60;

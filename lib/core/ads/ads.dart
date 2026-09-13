@@ -117,16 +117,16 @@ class AdManager extends ChangeNotifier {
 
 /// An anchored adaptive banner that occupies no space until it has actually
 /// loaded, so the layout never shows an empty reserved slot.
-class OneKitBanner extends StatefulWidget {
-  const OneKitBanner({super.key, this.padded = true});
+class AppBanner extends StatefulWidget {
+  const AppBanner({super.key, this.padded = true});
 
   final bool padded;
 
   @override
-  State<OneKitBanner> createState() => _OneKitBannerState();
+  State<AppBanner> createState() => _AppBannerState();
 }
 
-class _OneKitBannerState extends State<OneKitBanner> {
+class _AppBannerState extends State<AppBanner> {
   BannerAd? _ad;
   bool _loaded = false;
   bool _requested = false;

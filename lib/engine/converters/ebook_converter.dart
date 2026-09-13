@@ -36,7 +36,7 @@ class EbookConverter extends FileConverter {
   /// which owns PDF text extraction.
   static List<int> build(List<DocBlock> blocks, String ext, String title) {
     if (ext != 'epub') {
-      throw ConversionException('OneKit cannot write ${ext.toUpperCase()} eBooks.');
+      throw ConversionException('This app cannot write ${ext.toUpperCase()} eBooks.');
     }
     return _buildEpub(blocks, title);
   }
@@ -74,7 +74,7 @@ class EbookConverter extends FileConverter {
     return switch (ext) {
       'epub' => _readEpub(bytes),
       'fb2' => _readFb2(utf8.decode(bytes, allowMalformed: true)),
-      _ => throw ConversionException('OneKit cannot read ${ext.toUpperCase()} eBooks.'),
+      _ => throw ConversionException('This app cannot read ${ext.toUpperCase()} eBooks.'),
     };
   }
 

@@ -93,7 +93,7 @@ class ArchiveConverter extends FileConverter {
         'tgz' => TarDecoder().decodeBytes(GZipDecoder().decodeBytes(bytes)),
         'tbz' => TarDecoder().decodeBytes(BZip2Decoder().decodeBytes(bytes)),
         'txz' => TarDecoder().decodeBytes(XZDecoder().decodeBytes(bytes)),
-        _ => throw ConversionException('OneKit cannot read ${ext.toUpperCase()} archives.'),
+        _ => throw ConversionException('This app cannot read ${ext.toUpperCase()} archives.'),
       };
     } on ConversionException {
       rethrow;
@@ -121,7 +121,7 @@ class ArchiveConverter extends FileConverter {
       case 'tbz':
         return BZip2Encoder().encode(TarEncoder().encode(archive));
       default:
-        throw ConversionException('OneKit cannot write ${ext.toUpperCase()} archives.');
+        throw ConversionException('This app cannot write ${ext.toUpperCase()} archives.');
     }
   }
 
@@ -132,7 +132,7 @@ class ArchiveConverter extends FileConverter {
         'bz2' => BZip2Decoder().decodeBytes(bytes),
         'xz' => XZDecoder().decodeBytes(bytes),
         'zlib' => const ZLibDecoder().decodeBytes(bytes),
-        _ => throw ConversionException('OneKit cannot read ${ext.toUpperCase()} streams.'),
+        _ => throw ConversionException('This app cannot read ${ext.toUpperCase()} streams.'),
       };
     } on ConversionException {
       rethrow;
@@ -146,7 +146,7 @@ class ArchiveConverter extends FileConverter {
       'gz' => GZipEncoder().encode(raw),
       'bz2' => BZip2Encoder().encode(raw),
       'zlib' => const ZLibEncoder().encode(raw),
-      _ => throw ConversionException('OneKit cannot write ${ext.toUpperCase()} streams.'),
+      _ => throw ConversionException('This app cannot write ${ext.toUpperCase()} streams.'),
     };
   }
 

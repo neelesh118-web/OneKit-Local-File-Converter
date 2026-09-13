@@ -1,4 +1,4 @@
-import 'package:file_picker/file_picker.dart';
+import 'package:file_picker/file_picker.dart' show FilePicker, FileType;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
@@ -25,6 +25,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   List<String> _favourites = const [];
+  List<HistoryEntry> _recent = const [];
 
   /// Curated starting set, replaced by the user's own most-used pairs as soon
   /// as they have any history.
@@ -48,6 +49,12 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _loadFavourites();
     HistoryStore.instance.addListener(_loadFavourites);
+    // Warm the format registry in a post-frame callback so the heavy
+    // pair-matrix computation happens after the first frame is drawn,
+    // not during the splash.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FormatRegistry.warmUp();
+    });
   }
 
   @override
@@ -58,7 +65,8 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadFavourites() async {
     final ids = await HistoryStore.instance.favouritePairIds();
-    if (mounted) setState(() => _favourites = ids);
+    final recent = await HistoryStore.instance.recent(limit: 5);
+    if (mounted) setState(() { _favourites = ids; _recent = recent; });
   }
 
   /// Pair lookup built once for the whole app, not per build. This used to
@@ -93,6 +101,24 @@ class _HomePageState extends State<HomePage> {
     context.go('/batch');
   }
 
+  /// Quick action: pick a video and extract its audio as MP3.
+  Future<void> _extractAudio() async {
+    final file = await FilePicker.pickFile(
+      type: FileType.video,
+    );
+    final path = file?.path;
+    if (path == null || !mounted) return;
+    final mp3 = FormatRegistry.byExt('mp3')!;
+    context.push(
+      '/convert',
+      extra: ConvertArgs(
+        paths: [path],
+        target: mp3,
+        displayNames: [file!.name],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
@@ -103,6 +129,18 @@ class _HomePageState extends State<HomePage> {
         _header(),
         const SizedBox(height: 6),
         _heroCard(),
+        const SizedBox(height: 8),
+        const AppBanner(),
+        const SizedBox(height: 12),
+        // Quick action: extract audio from video.
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _extractAudio,
+            icon: const Icon(Icons.graphic_eq_rounded, size: 19),
+            label: const Text('Extract MP3 from video'),
+          ),
+        ),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -123,6 +161,21 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
+        if (_recent.isNotEmpty) ...[
+          SectionTitle(
+            'Recent',
+            trailing: TextButton(
+              onPressed: () => context.go('/history'),
+              child: const Text('See all'),
+            ),
+          ),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [for (final e in _recent) _RecentChip(entry: e)],
+          ),
+          const SizedBox(height: 10),
+        ],
         SectionTitle(
           _favourites.isEmpty ? 'Popular conversions' : 'Your most used',
           trailing: TextButton(
@@ -138,7 +191,7 @@ class _HomePageState extends State<HomePage> {
         const SectionTitle('Browse by type'),
         _familyGrid(),
         const SizedBox(height: 18),
-        const OneKitBanner(),
+        const AppBanner(),
         const SizedBox(height: 10),
         const SupportCard(),
         const SizedBox(height: 14),
@@ -158,7 +211,7 @@ class _HomePageState extends State<HomePage> {
       padding: const EdgeInsets.fromLTRB(0, 10, 0, 8),
       child: Row(
         children: [
-          const OneKitMark(size: 36),
+          const AppMark(size: 36),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -215,7 +268,7 @@ class _HomePageState extends State<HomePage> {
           Text('Select a file', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 6),
           Text(
-            'Pick anything on your device. OneKit works out\nwhat it can become.',
+            'Pick anything on your device. This app works out\nwhat it can become.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13, height: 1.45, color: t.textFaint),
           ),
@@ -360,6 +413,55 @@ class _FamilyTile extends StatelessWidget {
                   Text('$count formats', style: TextStyle(fontSize: 11, color: t.textFaint)),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentChip extends StatelessWidget {
+  const _RecentChip({required this.entry});
+  final HistoryEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return InkWell(
+      onTap: () {
+        if (entry.outputPath != null) {
+          context.push(
+            '/convert',
+            extra: ConvertArgs(
+              paths: [entry.outputPath!],
+              displayNames: [entry.name],
+            ),
+          );
+        }
+      },
+      borderRadius: BorderRadius.circular(AppTheme.radiusSmall + 2),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: t.border),
+          borderRadius: BorderRadius.circular(AppTheme.radiusSmall + 2),
+          color: t.surface.withValues(alpha: 0.6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              entry.fromExt.toUpperCase(),
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: t.textPrimary),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 7),
+              child: Icon(Icons.arrow_forward_rounded, size: 13, color: t.textFaint),
+            ),
+            Text(
+              entry.toExt.toUpperCase(),
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: t.textPrimary),
             ),
           ],
         ),

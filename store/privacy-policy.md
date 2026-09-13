@@ -1,19 +1,19 @@
-# Privacy Policy — OneKit: Local File Converter
+# Privacy Policy — 100% Local File Converter
 
 **Last updated: 27 August 2026**
 
 ## The short version
 
-OneKit converts your files on your phone. Your files are never uploaded,
+This app converts your files on your phone. Your files are never uploaded,
 never sent to a server, and never seen by anyone but you. There is no account
 and no sign-in.
 
-The only part of OneKit that uses the internet at all is the advertising
+The only part of this app that uses the internet at all is the advertising
 banner, provided by Google AdMob.
 
-## What OneKit does with your files
+## What the app does with your files
 
-When you pick a file, OneKit reads it, converts it on your device, and writes
+When you pick a file, the app reads it, converts it on your device, and writes
 the result to the app's own private storage folder. That is the whole
 lifecycle.
 
@@ -30,9 +30,9 @@ them at any time from **Settings → Clear conversion history** and
 
 ## What is collected
 
-OneKit itself collects nothing.
+The app itself collects nothing.
 
-OneKit displays ads through **Google AdMob**. To show those ads, Google may
+The app displays ads through **Google AdMob**. To show those ads, Google may
 collect and process:
 
 - your device's **advertising ID**,
@@ -46,7 +46,7 @@ policy: <https://policies.google.com/privacy>
 You can limit this at any time in **Android Settings → Privacy → Ads**, where
 you can delete or reset your advertising ID and opt out of ad personalisation.
 
-## Permissions OneKit requests, and why
+## Permissions the app requests, and why
 
 | Permission | Why |
 | --- | --- |
@@ -55,20 +55,20 @@ you can delete or reset your advertising ID and opt out of ad personalisation.
 | `AD_ID` | Required by AdMob on Android 13 and above. |
 | `WAKE_LOCK` | Keeps long video and batch conversions running while the app is open. |
 
-OneKit does **not** request storage permission. Files reach the app only
+The app does **not** request storage permission. Files reach the app only
 through Android's own file picker, which means you choose each file
 explicitly, and results are shared out through Android's share sheet.
 
 ## Children
 
-OneKit is a general-purpose utility and is not directed at children. We do not
+The app is a general-purpose utility and is not directed at children. We do not
 knowingly collect personal information from anyone.
 
 ## Payments and donations
 
-OneKit is free. If you choose to leave a tip, that link opens Buy Me a Coffee
+The app is free. If you choose to leave a tip, that link opens Buy Me a Coffee
 in your browser. Any payment happens entirely on their site under their own
-privacy policy; OneKit neither sees nor stores payment details.
+privacy policy; the app neither sees nor stores payment details.
 
 ## Changes to this policy
 

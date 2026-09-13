@@ -102,7 +102,7 @@ class DocumentConverter extends FileConverter {
       case 'odt':
         return _fromOfficeXml(await File(path).readAsBytes(), 'content.xml', 'text');
       default:
-        throw ConversionException('OneKit cannot read ${ext.toUpperCase()} documents.');
+        throw ConversionException('This app cannot read ${ext.toUpperCase()} documents.');
     }
   }
 
@@ -273,7 +273,7 @@ class DocumentConverter extends FileConverter {
       case 'tex':
         return _toTex(blocks);
       default:
-        throw ConversionException('OneKit cannot write ${ext.toUpperCase()} documents.');
+        throw ConversionException('This app cannot write ${ext.toUpperCase()} documents.');
     }
   }
 
@@ -351,7 +351,7 @@ class DocumentConverter extends FileConverter {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Converted with OneKit</title>
+<title>Converted with Local File Converter</title>
 <style>
   body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 46rem; margin: 2rem auto; padding: 0 1.25rem; }
   pre { background: #f4f4f5; padding: 1rem; overflow-x: auto; border-radius: 8px; }
@@ -529,7 +529,7 @@ ${body.toString().trimRight()}
   static Future<List<int>> buildPdf(List<DocBlock> blocks, {String? title}) async {
     final theme = await _getPdfTheme();
     final doc = pw.Document(
-      title: title == null ? 'OneKit' : 'Converted from $title',
+      title: title == null ? 'Local File Converter' : 'Converted from $title',
       theme: theme,
     );
 

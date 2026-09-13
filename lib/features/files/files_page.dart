@@ -217,7 +217,7 @@ class _FilesPageState extends State<FilesPage> {
                           style: TextStyle(fontSize: 11, color: t.textFaint),
                         ),
                       const SizedBox(height: 12),
-                      const OneKitBanner(),
+                      const AppBanner(),
                     ],
                   ),
                 ),

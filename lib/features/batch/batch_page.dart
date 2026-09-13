@@ -325,7 +325,7 @@ class _BatchPageState extends State<BatchPage> {
     ];
     if (files.isEmpty) return;
     await SharePlus.instance.share(
-      ShareParams(files: files, subject: 'Converted with OneKit'),
+      ShareParams(files: files, subject: 'Converted with Local File Converter'),
     );
   }
 
@@ -352,7 +352,7 @@ class _BatchPageState extends State<BatchPage> {
     await dir.create(recursive: true);
     final zipPath = p.join(
       dir.path,
-      'OneKit_${_target?.upper ?? 'batch'}_${DateTime.now().millisecondsSinceEpoch}.zip',
+      'LocalFileConverter_${_target?.upper ?? 'batch'}_${DateTime.now().millisecondsSinceEpoch}.zip',
     );
     await File(zipPath).writeAsBytes(encoded, flush: true);
 
@@ -422,7 +422,7 @@ class _BatchPageState extends State<BatchPage> {
         EmptyState(
           icon: Icons.layers_outlined,
           title: 'Nothing queued',
-          message: 'Add several files, or drop in a ZIP and OneKit will\nconvert everything inside it.',
+          message: 'Add several files, or drop in a ZIP and this app will\nconvert everything inside it.',
         ),
         Row(
           children: [
@@ -444,7 +444,7 @@ class _BatchPageState extends State<BatchPage> {
           ],
         ),
         const SizedBox(height: 20),
-        const OneKitBanner(),
+        const AppBanner(),
       ],
     );
   }
@@ -551,7 +551,7 @@ class _BatchPageState extends State<BatchPage> {
           },
         ),
         const SizedBox(height: 16),
-        const OneKitBanner(),
+        const AppBanner(),
       ],
     );
   }
@@ -563,7 +563,7 @@ class _BatchPageState extends State<BatchPage> {
     final cancelled = _cancelled.length;
     final configuredDir = context.read<SettingsStore>().outputDir;
     final location = configuredDir == null || configuredDir.isEmpty
-        ? 'OneKit folder in app storage'
+        ? 'App folder in storage'
         : configuredDir;
 
     return Padding(

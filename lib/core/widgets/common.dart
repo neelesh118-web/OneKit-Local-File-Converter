@@ -220,7 +220,7 @@ class SupportCard extends StatelessWidget {
                 Text('Buy me a coffee', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 2),
                 Text(
-                  'OneKit is free and runs offline. Tips keep it that way.',
+                  'This app is free and runs offline. Tips keep it that way.',
                   style: TextStyle(fontSize: 12.5, color: t.textFaint, height: 1.35),
                 ),
               ],

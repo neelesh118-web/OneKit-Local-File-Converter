@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,7 @@ import 'package:onekit_converter/engine/converters/converter.dart';
 import 'package:onekit_converter/engine/converters/data_converter.dart';
 import 'package:onekit_converter/engine/converters/document_converter.dart';
 import 'package:onekit_converter/engine/converters/ebook_converter.dart';
+import 'package:onekit_converter/engine/converters/font_converter.dart';
 import 'package:onekit_converter/engine/converters/subtitle_converter.dart';
 import 'package:onekit_converter/engine/engine.dart';
 import 'package:onekit_converter/engine/format.dart';
@@ -507,6 +509,128 @@ Some paragraph text.
     });
   });
 
+  // ------------------------------------------------------------------ font
+
+  group('FontConverter', () {
+    const converter = FontConverter();
+
+    /// Tables of a real-enough face: even and odd lengths so the padding and
+    /// partial-word checksum paths are both exercised.
+    Map<String, List<int>> fixtureTables() => {
+          'head': List.generate(54, (i) => i & 0xFF),
+          'hhea': List.generate(36, (i) => (i * 3) & 0xFF),
+          'maxp': List.generate(32, (i) => (i * 7) & 0xFF),
+          'name': List.generate(13, (i) => 0x40 + i),
+        };
+
+    test('TTF to WOFF packs an aligned, valid container', () async {
+      final input = File(p.join(tmp.path, 'in.ttf'))
+        ..writeAsBytesSync(_buildSfnt(fixtureTables(), 0x00010000));
+      final woff = await run(converter, input, 'woff');
+
+      final d = ByteData.sublistView(woff.readAsBytesSync());
+      expect(d.getUint32(0), 0x774F4646, reason: 'WOFF signature');
+      expect(d.getUint32(4), 0x00010000, reason: 'flavor preserved');
+      expect(d.getUint16(12), 4, reason: 'table count');
+      expect(d.getUint32(8), woff.lengthSync(), reason: 'declared length matches');
+      for (var i = 0; i < 4; i++) {
+        final rec = 44 + 20 * i;
+        expect(d.getUint32(rec + 4) % 4, 0, reason: 'table offsets must be 4-aligned');
+        expect(
+          d.getUint32(rec + 8),
+          lessThanOrEqualTo(d.getUint32(rec + 12)),
+          reason: 'compressed size never exceeds original size',
+        );
+      }
+    });
+
+    test('WOFF unpacks to the original tables', () async {
+      final tables = fixtureTables();
+      final input = File(p.join(tmp.path, 'in.ttf'))
+        ..writeAsBytesSync(_buildSfnt(tables, 0x00010000));
+      final woff = await run(converter, input, 'woff');
+      final back = await run(converter, woff, 'ttf');
+
+      final roundTripped = _sfntTables(back.readAsBytesSync());
+      expect(roundTripped.keys.toSet(), tables.keys.toSet());
+      for (final entry in tables.entries) {
+        expect(roundTripped[entry.key], entry.value, reason: '${entry.key} bytes');
+      }
+    });
+
+    test('TTC extracts the first face', () async {
+      final tables = fixtureTables();
+      final input = File(p.join(tmp.path, 'in.ttc'))
+        ..writeAsBytesSync(_buildTtc(_buildSfnt(tables, 0x00010000)));
+      final out = await run(converter, input, 'ttf');
+
+      final face = _sfntTables(out.readAsBytesSync());
+      expect(face.keys.toSet(), tables.keys.toSet());
+      expect(face['name'], tables['name']);
+    });
+
+    test('TTF to TTC wraps one face, and the wrap reads back', () async {
+      final tables = fixtureTables();
+      final input = File(p.join(tmp.path, 'in.ttf'))
+        ..writeAsBytesSync(_buildSfnt(tables, 0x00010000));
+      final ttc = await run(converter, input, 'ttc');
+
+      final bytes = ttc.readAsBytesSync();
+      final d = ByteData.sublistView(bytes);
+      expect(d.getUint32(0), 0x74746366, reason: 'ttcf tag');
+      expect(d.getUint32(8), 1, reason: 'one face');
+      expect(d.getUint32(12), 16, reason: 'face starts after the TTC header');
+
+      // Table offsets point into the whole collection file, as the format
+      // requires — read them back that way.
+      final face = _sfntTables(bytes, faceOffset: 16);
+      expect(face.keys.toSet(), tables.keys.toSet());
+      expect(face['head'], tables['head']);
+    });
+
+    test('a CFF face refuses the TTF label but accepts OTF', () async {
+      final cff = File(p.join(tmp.path, 'in.otf'))
+        ..writeAsBytesSync(_buildSfnt(fixtureTables(), 0x4F54544F));
+
+      // Through WOFF, the flavor guard is what refuses the wrong label.
+      final woff = await run(converter, cff, 'woff');
+      final job = ConversionJob(
+        id: 'cff',
+        sourcePath: woff.path,
+        target: fmt('ttf'),
+      );
+      await ConversionEngine.instance.run(job, cancel: CancelToken(), outputDirectory: tmp.path);
+      expect(job.status, JobStatus.failed);
+      expect(job.error, contains('CFF'));
+
+      final otf = await run(converter, woff, 'otf');
+      expect(_sfntTables(otf.readAsBytesSync()).keys, containsAll(['head', 'name']));
+    });
+
+    test('TTF to OTF is excluded from the catalogue and unroutable', () {
+      expect(
+        FormatRegistry.pairs.map((pair) => pair.id),
+        isNot(contains('ttf>otf')),
+      );
+      expect(
+        ConversionEngine.instance.resolve(fmt('ttf'), fmt('otf')),
+        isNull,
+      );
+    });
+
+    test('garbage input fails with a clear message, not a crash', () async {
+      final garbage = write('in.ttf', 'this is not a font at all');
+      final job = ConversionJob(
+        id: 'bad',
+        sourcePath: garbage.path,
+        target: fmt('woff'),
+      );
+      await ConversionEngine.instance.run(job, cancel: CancelToken(), outputDirectory: tmp.path);
+      expect(job.status, JobStatus.failed);
+      expect(job.error, isNotNull);
+    });
+  });
+
   // ---------------------------------------------------------------- engine
 
   group('ConversionEngine routing', () {
@@ -544,6 +668,10 @@ Some paragraph text.
         expect(
           ConversionEngine.instance.resolve(fmt('docx'), fmt('md')),
           isA<DocumentConverter>(),
+        );
+        expect(
+          ConversionEngine.instance.resolve(fmt('ttc'), fmt('woff')),
+          isA<FontConverter>(),
         );
       },
     );
@@ -671,4 +799,77 @@ File _buildDocx(Directory dir, List<(String style, String text)> paragraphs) {
 
   return File(p.join(dir.path, 'in.docx'))
     ..writeAsBytesSync(ZipEncoder().encode(archive));
+}
+
+/// Serialises tables into a structurally valid sfnt face — the same shape
+/// FontConverter writes — so fixtures carry no binary assets.
+Uint8List _buildSfnt(Map<String, List<int>> tables, int flavor) {
+  final tags = tables.keys.toList()..sort();
+  final numTables = tags.length;
+  final dirSize = 12 + 16 * numTables;
+  var bodySize = 0;
+  for (final t in tags) {
+    bodySize += (tables[t]!.length + 3) & ~3;
+  }
+  final out = Uint8List(dirSize + bodySize);
+  final d = ByteData.sublistView(out);
+  d.setUint32(0, flavor);
+  d.setUint16(4, numTables);
+
+  var offset = dirSize;
+  for (var i = 0; i < numTables; i++) {
+    final tag = tags[i];
+    final data = tables[tag]!;
+    for (var j = 0; j < 4; j++) {
+      d.setUint8(12 + 16 * i + j, j < tag.length ? tag.codeUnitAt(j) : 0x20);
+    }
+    d.setUint32(12 + 16 * i + 8, offset);
+    d.setUint32(12 + 16 * i + 12, data.length);
+    out.setAll(offset, data);
+    offset += (data.length + 3) & ~3;
+  }
+  return out;
+}
+
+/// Wraps a bare face into a minimal one-entry TrueType Collection, shifting
+/// its table offsets to be collection-relative as the format requires.
+Uint8List _buildTtc(List<int> face) {
+  const headerSize = 16;
+  final body = Uint8List.fromList(face);
+  final out = Uint8List(headerSize + body.length);
+  out.setAll(headerSize, body);
+  final d = ByteData.sublistView(out);
+  final numTables = d.getUint16(headerSize + 4);
+  for (var i = 0; i < numTables; i++) {
+    final rec = headerSize + 12 + 16 * i;
+    d.setUint32(rec + 8, d.getUint32(rec + 8) + headerSize);
+  }
+  d.setUint32(0, 0x74746366);
+  d.setUint32(4, 0x00010000);
+  d.setUint32(8, 1);
+  d.setUint32(12, headerSize);
+  return out;
+}
+
+/// Reads a parsed sfnt back out of produced bytes, using the directory's own
+/// lengths so 4-byte padding never leaks into a comparison. [faceOffset] is
+/// where the face starts (0 for a bare file, 16 inside a TTC); table offsets
+/// are read as stored and applied to the whole buffer.
+Map<String, Uint8List> _sfntTables(Uint8List bytes, {int faceOffset = 0}) {
+  final d = ByteData.sublistView(bytes);
+  final numTables = d.getUint16(faceOffset + 4);
+  final out = <String, Uint8List>{};
+  for (var i = 0; i < numTables; i++) {
+    final rec = faceOffset + 12 + 16 * i;
+    final tag = String.fromCharCodes([
+      d.getUint8(rec),
+      d.getUint8(rec + 1),
+      d.getUint8(rec + 2),
+      d.getUint8(rec + 3),
+    ]).trim();
+    final offset = d.getUint32(rec + 8);
+    final length = d.getUint32(rec + 12);
+    out[tag] = Uint8List.sublistView(bytes, offset, offset + length);
+  }
+  return out;
 }

@@ -7,8 +7,8 @@ import '../theme/app_theme.dart';
 /// The OneKit mark: a rounded square holding a "1" whose counter is cut by two
 /// converging chevrons — one file going in, one coming out. Drawn rather than
 /// shipped as a bitmap so it stays crisp at every size and inverts with theme.
-class OneKitMark extends StatelessWidget {
-  const OneKitMark({super.key, this.size = 72, this.inverted = false});
+class AppMark extends StatelessWidget {
+  const AppMark({super.key, this.size = 72, this.inverted = false});
 
   final double size;
 
@@ -80,8 +80,8 @@ class _MarkPainter extends CustomPainter {
 }
 
 /// Wordmark + mark lockup used on the splash and the about page.
-class OneKitLockup extends StatelessWidget {
-  const OneKitLockup({super.key, this.markSize = 88, this.showTagline = true});
+class AppLockup extends StatelessWidget {
+  const AppLockup({super.key, this.markSize = 88, this.showTagline = true});
 
   final double markSize;
   final bool showTagline;
@@ -92,18 +92,14 @@ class OneKitLockup extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        OneKitMark(size: markSize),
+        AppMark(size: markSize),
         SizedBox(height: markSize * 0.28),
         Text.rich(
           TextSpan(
             children: [
               TextSpan(
-                text: 'One',
+                text: '100%',
                 style: TextStyle(fontWeight: FontWeight.w800, color: t.textPrimary),
-              ),
-              TextSpan(
-                text: 'Kit',
-                style: TextStyle(fontWeight: FontWeight.w300, color: t.textPrimary),
               ),
             ],
           ),
@@ -112,7 +108,7 @@ class OneKitLockup extends StatelessWidget {
         if (showTagline) ...[
           SizedBox(height: markSize * 0.1),
           Text(
-            'LOCAL FILE CONVERTER',
+            'Local File Converter',
             style: TextStyle(
               fontSize: markSize * 0.115,
               letterSpacing: markSize * 0.045,

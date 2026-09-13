@@ -154,7 +154,7 @@ class _HistoryPageState extends State<HistoryPage> {
                           child: _EntryRow(entry: e, onChanged: _load),
                         ),
                     const SizedBox(height: 12),
-                    const OneKitBanner(),
+                    const AppBanner(),
                   ],
                 ),
         ),
