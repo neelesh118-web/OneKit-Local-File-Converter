@@ -387,6 +387,7 @@ class _BatchPageState extends State<BatchPage> {
 
     return Column(
       children: [
+        const AppBanner(),
         PageHeader(
           title: 'Batch',
           subtitle: _items.isEmpty

@@ -205,6 +205,7 @@ class _ConvertPageState extends State<ConvertPage> {
 
     return Column(
       children: [
+        const AppBanner(),
         PageHeader(
           title: 'Convert to',
           subtitle: '${targets.length} target formats available',

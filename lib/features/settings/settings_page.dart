@@ -65,6 +65,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return Column(
       children: [
+        const AppBanner(),
         const PageHeader(title: 'Settings'),
         Expanded(
           child: ListView(

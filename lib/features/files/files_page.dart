@@ -131,6 +131,7 @@ class _FilesPageState extends State<FilesPage> {
 
     return Column(
       children: [
+        const AppBanner(),
         PageHeader(
           title: selecting ? '${_selected.length} selected' : 'Files',
           subtitle: selecting

@@ -38,7 +38,9 @@ class AboutPage extends StatelessWidget {
                     children: [
                       const SizedBox(height: 12),
                       const Center(child: AppLockup(markSize: 76)),
-                      const SizedBox(height: 26),
+                      const SizedBox(height: 10),
+                      const AppBanner(),
+                      const SizedBox(height: 16),
                       Row(
                         children: [
                           StatPill(

@@ -76,6 +76,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
     return Column(
       children: [
+        const AppBanner(),
         PageHeader(
           title: 'History',
           subtitle: stats == null
