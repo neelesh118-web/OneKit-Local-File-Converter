@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 
 import '../../core/data/settings_store.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/brand.dart';
 import '../../core/widgets/starfield.dart';
 
 /// Three-screen onboarding shown on first launch. Teaches the core flow

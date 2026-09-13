@@ -13,7 +13,7 @@ import 'converters/ffmpeg_converter.dart';
 import 'converters/font_converter.dart';
 import 'converters/pdf_converter.dart';
 import 'converters/subtitle_converter.dart';
-import 'format.dart' show ConversionPair, Family, FileFormat;
+import 'format.dart' show Family, FileFormat;
 import 'job.dart';
 
 /// Routes a job to the converter that handles it and runs it.

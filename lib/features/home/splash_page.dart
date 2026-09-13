@@ -61,7 +61,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final bottomPad = MediaQuery.viewPaddingOf(context).bottom;
                 return SingleChildScrollView(
                   child: ConstrainedBox(
                     constraints: BoxConstraints(minHeight: constraints.maxHeight),

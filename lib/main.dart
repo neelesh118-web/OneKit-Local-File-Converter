@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'app.dart';
-import 'core/ads/ads.dart';
 import 'core/data/settings_store.dart';
 
 Future<void> main() async {
@@ -33,8 +32,5 @@ Future<void> main() async {
     ),
   );
 
-  // Initialize AdMob immediately so ads can load as soon as pages render.
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    unawaited(AdManager.instance.initialize());
-  });
+
 }
