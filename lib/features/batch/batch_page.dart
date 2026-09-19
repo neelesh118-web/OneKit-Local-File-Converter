@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/ads/ads.dart';
 import '../../core/data/history_store.dart';
+import '../../core/data/preset_store.dart';
 import '../../core/data/settings_store.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
@@ -24,6 +25,8 @@ import '../../engine/format.dart';
 import '../../engine/job.dart';
 import '../../engine/registry.dart';
 import '../convert/options_sheet.dart';
+import '../presets/preset_chip.dart';
+import 'batch_plan.dart';
 
 /// Bulk conversion: many files at once, or every file inside a ZIP.
 ///
@@ -45,6 +48,12 @@ class _BatchPageState extends State<BatchPage> {
   final List<_Item> _items = [];
   FileFormat? _target;
   ConvertOptions _options = const ConvertOptions();
+
+  /// Optimize mode: re-encode every file into its own format instead of
+  /// converting the queue to one shared target. A queue of mixed formats is the
+  /// point of it, which is why no target is picked here and the options sheet
+  /// spans every format in the queue instead of one.
+  bool _optimize = false;
 
   bool _running = false;
   CancelToken? _cancel;
@@ -88,6 +97,34 @@ class _BatchPageState extends State<BatchPage> {
     }
     _pruneTarget();
     if (mounted) setState(() {});
+  }
+
+  /// Queue entries this run will actually process. A file this build cannot
+  /// read — or, when optimizing, cannot re-encode — is skipped rather than
+  /// queued and failed one by one.
+  List<_Item> get _runnable =>
+      [for (final i in _items) if (_targetFor(i) != null) i];
+
+  /// What [item] becomes in the current mode, or null when it cannot be done.
+  FileFormat? _targetFor(_Item item) =>
+      batchTargetFor(source: item.format, shared: _target, optimize: _optimize);
+
+  /// Whether the run the button would start leaves this file alone. With no
+  /// target picked yet in convert mode nothing is skipped — that run has not
+  /// been configured at all, and marking the whole queue as broken would be a
+  /// lie about files that are perfectly convertible.
+  bool _willSkip(_Item item) =>
+      _targetFor(item) == null && (_optimize || _target != null);
+
+  /// The distinct formats an optimize run would re-encode. The shared options
+  /// sheet is scoped to these, so it offers a control when any of them
+  /// understands it.
+  List<FileFormat> _optimizableFormats() {
+    final seen = <String>{};
+    return [
+      for (final i in _runnable)
+        if (i.format != null && seen.add(i.format!.ext)) i.format!,
+    ];
   }
 
   /// Drops the chosen target if a newly added file cannot reach it.
@@ -188,7 +225,7 @@ class _BatchPageState extends State<BatchPage> {
 
   Future<void> _runAll() async {
     final target = _target;
-    if (target == null || _items.isEmpty) return;
+    if (_items.isEmpty || (!_optimize && target == null)) return;
 
     final cancel = CancelToken();
     setState(() {
@@ -204,18 +241,23 @@ class _BatchPageState extends State<BatchPage> {
     var succeeded = 0;
     var started = 0;
 
-    final queue = [
-      for (var i = 0; i < _items.length; i++)
-        if (_items[i].format != null) _items[i],
-    ];
+    // One rule decides what runs, and it is the same one the counts on this
+    // screen are built from: a file with no target in the current mode is left
+    // alone rather than raced to a failure.
+    final queue = _runnable;
 
     Future<void> runOne(_Item item, int index) async {
+      final source = item.format!;
       final job = ConversionJob(
         id: '${DateTime.now().microsecondsSinceEpoch}_$index',
         sourcePath: item.path,
-        source: item.format,
-        target: target,
+        source: source,
+        // An optimize job's target is its own format: that is what makes the
+        // engine re-encode rather than remux, and what keeps a mixed queue
+        // from needing a shared target at all.
+        target: _targetFor(item)!,
         options: _options,
+        optimize: _optimize,
       );
       if (mounted) setState(() => item.job = job);
       await ConversionEngine.instance.run(
@@ -247,7 +289,7 @@ class _BatchPageState extends State<BatchPage> {
       await Future.wait(workers);
     }
 
-    await drain(_concurrencyFor(queue, target));
+    await drain(_concurrencyFor(queue, target: _optimize ? null : target));
 
     if (!mounted) return;
     setState(() {
@@ -279,10 +321,13 @@ class _BatchPageState extends State<BatchPage> {
   /// How many jobs to run at once. Video is left strictly serial; FFmpeg
   /// already uses every core for a single clip, so overlapping them only adds
   /// memory pressure and heat.
-  static int _concurrencyFor(List<_Item> queue, FileFormat target) {
+  static int _concurrencyFor(List<_Item> queue, {required FileFormat? target}) {
     const heavyBytes = 100 * 1024 * 1024;
     final heavy =
-        target.family == Family.video ||
+        // Converting a whole queue into video means every job is a video
+        // encode. Optimizing has no shared target, so the per-file checks
+        // below are what decide there.
+        target?.family == Family.video ||
         queue.any(
           (i) => i.format?.family == Family.video || i.sizeBytes > heavyBytes,
         );
@@ -313,6 +358,10 @@ class _BatchPageState extends State<BatchPage> {
       _items.where((i) => i.job?.status == JobStatus.cancelled).toList();
 
   bool get _hasFinished => _items.any((i) => i.job?.isTerminal ?? false);
+
+  /// "Done" is not the same act in both modes, and a batch of files that all
+  /// kept their format is not a batch of conversions.
+  String get _doneVerb => _optimize ? 'optimized' : 'converted';
 
   void _openFiles() {
     if (mounted) context.go('/files');
@@ -352,7 +401,7 @@ class _BatchPageState extends State<BatchPage> {
     await dir.create(recursive: true);
     final zipPath = p.join(
       dir.path,
-      'LocalFileConverter_${_target?.upper ?? 'batch'}_${DateTime.now().millisecondsSinceEpoch}.zip',
+      'LocalFileConverter_${_target?.upper ?? (_optimize ? 'optimized' : 'batch')}_${DateTime.now().millisecondsSinceEpoch}.zip',
     );
     await File(zipPath).writeAsBytes(encoded, flush: true);
 
@@ -363,6 +412,25 @@ class _BatchPageState extends State<BatchPage> {
   }
 
   Future<void> _openOptions() async {
+    if (_optimize) {
+      // Scoped to every format in the queue rather than to one target, because
+      // there is no one target — and because a quality slider that silently did
+      // nothing for half the files would be worse than not offering it.
+      final formats = _optimizableFormats();
+      if (formats.isEmpty) return;
+      final updated = await showModalBottomSheet<ConvertOptions>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => OptionsSheet.batch(
+          formats: formats,
+          options: _options,
+          onSavePreset: _savePreset,
+        ),
+      );
+      if (updated != null && mounted) setState(() => _options = updated);
+      return;
+    }
+
     final target = _target;
     final source = _items.firstOrNull?.format;
     if (target == null || source == null) return;
@@ -380,7 +448,9 @@ class _BatchPageState extends State<BatchPage> {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final targets = _commonTargets();
+    // Only the convert side needs the shared-target list, and computing it walks
+    // every format in the registry for every source in the queue.
+    final targets = _optimize ? const <FileFormat>[] : _commonTargets();
     final done = _done.length;
     final failed = _failed.length;
     final cancelled = _cancelled.length;
@@ -391,11 +461,13 @@ class _BatchPageState extends State<BatchPage> {
         PageHeader(
           title: 'Batch',
           subtitle: _items.isEmpty
-              ? 'Convert many files at once'
+              ? (_optimize
+                  ? 'Shrink each file in its own format'
+                  : 'Convert many files at once')
               : _running
                   ? '${_items.length} file${_items.length == 1 ? '' : 's'} queued'
                   : _hasFinished
-                      ? '$done converted · $failed failed${cancelled == 0 ? '' : ' · $cancelled cancelled'}'
+                      ? '$done $_doneVerb · $failed failed${cancelled == 0 ? '' : ' · $cancelled cancelled'}'
                       : '${_items.length} file${_items.length == 1 ? '' : 's'} queued',
           actions: [
             if (_items.isNotEmpty && !_running)
@@ -411,7 +483,7 @@ class _BatchPageState extends State<BatchPage> {
           ],
         ),
         Expanded(child: _items.isEmpty ? _empty() : _queue(targets)),
-        if (_items.isNotEmpty) _bottomBar(t, targets),
+        if (_items.isNotEmpty) _bottomBar(t),
       ],
     );
   }
@@ -420,10 +492,16 @@ class _BatchPageState extends State<BatchPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
       children: [
+        // Reachable before a single file is added, because choosing the mode
+        // first is how you add a mixed queue on purpose.
+        _modeSelector(context.tokens),
+        const SizedBox(height: 20),
         EmptyState(
           icon: Icons.layers_outlined,
           title: 'Nothing queued',
-          message: 'Add several files, or drop in a ZIP and this app will\nconvert everything inside it.',
+          message: _optimize
+              ? 'Add several files and each one is re-encoded into its own\nformat, at one shared quality.'
+              : 'Add several files, or drop in a ZIP and this app will\nconvert everything inside it.',
         ),
         Row(
           children: [
@@ -467,7 +545,9 @@ class _BatchPageState extends State<BatchPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Converting to ${_target?.upper ?? ''}',
+                  _optimize
+                      ? 'Optimizing each file into its own format'
+                      : 'Converting to ${_target?.upper ?? ''}',
                   style: TextStyle(
                     fontSize: 13,
                     color: t.textFaint,
@@ -498,35 +578,41 @@ class _BatchPageState extends State<BatchPage> {
               ),
             ],
           ),
-          SectionTitle(
-            targets.isEmpty
-                ? 'No shared target format'
-                : 'Convert everything to',
-          ),
-          if (targets.isEmpty)
-            Panel(
-              child: Text(
-                'These files have no target format in common. Remove the odd one out, or convert them in separate batches.',
-                style: TextStyle(
-                  fontSize: 13.5,
-                  height: 1.5,
-                  color: t.textFaint,
-                ),
-              ),
-            )
-          else
-            Wrap(
-              spacing: 9,
-              runSpacing: 9,
-              children: [
-                for (final f in targets.take(40))
-                  _TargetPill(
-                    format: f,
-                    selected: _target?.ext == f.ext,
-                    onTap: () => setState(() => _target = f),
-                  ),
-              ],
+          _modeSelector(t),
+          const SizedBox(height: 4),
+          if (_optimize)
+            _optimizeSummary(t)
+          else ...[
+            SectionTitle(
+              targets.isEmpty
+                  ? 'No shared target format'
+                  : 'Convert everything to',
             ),
+            if (targets.isEmpty)
+              Panel(
+                child: Text(
+                  'These files have no target format in common. Remove the odd one out, convert them in separate batches — or switch to Optimize, which keeps every file in its own format.',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.5,
+                    color: t.textFaint,
+                  ),
+                ),
+              )
+            else
+              Wrap(
+                spacing: 9,
+                runSpacing: 9,
+                children: [
+                  for (final f in targets.take(40))
+                    _TargetPill(
+                      format: f,
+                      selected: _target?.ext == f.ext,
+                      onTap: () => setState(() => _target = f),
+                    ),
+                ],
+              ),
+          ],
         ],
         const SectionTitle('Queue'),
         // Virtualised: a 200-file queue used to build every row on every
@@ -541,6 +627,8 @@ class _BatchPageState extends State<BatchPage> {
               padding: const EdgeInsets.only(bottom: 8),
               child: _ItemRow(
                 item: item,
+                optimize: _optimize,
+                blocked: _willSkip(item),
                 onRemove: _running
                     ? null
                     : () => setState(() {
@@ -587,8 +675,10 @@ class _BatchPageState extends State<BatchPage> {
                 Expanded(
                   child: Text(
                     failed == 0 && cancelled == 0
-                        ? 'Conversion complete'
-                        : 'Conversion finished with issues',
+                        ? (_optimize ? 'Optimize complete' : 'Conversion complete')
+                        : (_optimize
+                            ? 'Optimize finished with issues'
+                            : 'Conversion finished with issues'),
                     style: TextStyle(
                       color: t.textPrimary,
                       fontSize: 17,
@@ -600,7 +690,7 @@ class _BatchPageState extends State<BatchPage> {
             ),
             const SizedBox(height: 12),
             Text(
-              '$done converted${failed == 0 ? '' : ' · $failed failed'}${cancelled == 0 ? '' : ' · $cancelled cancelled'}',
+              '$done $_doneVerb${failed == 0 ? '' : ' · $failed failed'}${cancelled == 0 ? '' : ' · $cancelled cancelled'}',
               style: TextStyle(
                 color: t.textSecondary,
                 fontSize: 14,
@@ -653,7 +743,135 @@ class _BatchPageState extends State<BatchPage> {
     );
   }
 
-  Widget _bottomBar(dynamic t, List<FileFormat> targets) {
+  /// Keeps the shared settings as a preset.
+  ///
+  /// What a batch can honestly save is an optimize recipe: there is no single
+  /// target here, so the recipe is "shrink each file where it is, at these
+  /// settings" — the same preset the convert screen runs on one file.
+  Future<String?> _savePreset(ConvertOptions options) async {
+    final store = context.read<PresetStore>();
+    final name = await askPresetName(
+      context,
+      suggested: 'Shrink a file',
+      existing: [for (final p in store.presets) p.name],
+    );
+    if (name == null) return null;
+    final saved = await store.save(name: name, options: options);
+    return saved.name;
+  }
+
+  /// What the run button says. The count is the queue's own answer to "what
+  /// will actually happen", so a queue with three unreadable files in it does
+  /// not promise to convert eleven.
+  String _runLabel() {
+    final ready = _runnable.length;
+    if (_optimize) {
+      if (ready == 0) return 'Nothing to optimize';
+      return 'Optimize $ready file${ready == 1 ? '' : 's'}';
+    }
+    if (_target == null) return 'Pick a format';
+    if (ready == 0) return 'Nothing to convert';
+    return 'Convert $ready to ${_target!.upper}';
+  }
+
+  /// Convert everything to one format, or shrink everything as it is. The
+  /// choice changes what the rest of the screen means: one target, or one
+  /// target per file.
+  Widget _modeSelector(AppTokens t) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionTitle('What should this batch do?'),
+        Row(
+          children: [
+            Expanded(
+              child: _ModePill(
+                icon: Icons.swap_horiz_rounded,
+                label: 'Convert to one',
+                selected: !_optimize,
+                onTap: () => setState(() => _optimize = false),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _ModePill(
+                icon: Icons.compress_rounded,
+                label: 'Optimize each',
+                selected: _optimize,
+                onTap: () => setState(() => _optimize = true),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// What an optimize run will do with this queue, said before it starts rather
+  /// than discovered one file at a time: how many files are ready, what they
+  /// are, and how many will be left alone because this build cannot re-encode
+  /// them.
+  Widget _optimizeSummary(AppTokens t) {
+    final ready = _runnable.length;
+    final skipped = _items.length - ready;
+    final formats = [for (final f in _optimizableFormats()) f.upper];
+    final listed = formats.take(6).join(', ');
+
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Each file keeps its format',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Every file is re-encoded into itself at the shared quality — JPG stays '
+            'JPG, MP4 stays MP4. This is how a mixed queue gets smaller when the '
+            'files have no format in common to be converted into.',
+            style: TextStyle(fontSize: 13, height: 1.45, color: t.textFaint),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                ready == 0 ? Icons.error_outline_rounded : Icons.compress_rounded,
+                size: 17,
+                color: t.textSecondary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  ready == 0
+                      ? 'Nothing in this queue can be re-encoded.'
+                      : '$ready file${ready == 1 ? '' : 's'} ready'
+                          '${formats.isEmpty ? '' : ' · $listed'}'
+                          '${formats.length > 6 ? ' +${formats.length - 6} more' : ''}',
+                  style: TextStyle(fontSize: 13, height: 1.4, color: t.textSecondary),
+                ),
+              ),
+            ],
+          ),
+          if (skipped > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              skipped == 1
+                  ? 'One file will be skipped: this build has no encoder to re-encode '
+                      'it with, so it is left untouched rather than failed.'
+                  : '$skipped files will be skipped: this build has no encoder to '
+                      're-encode them with, so they are left untouched rather than '
+                      'failed.',
+              style: TextStyle(fontSize: 12.5, height: 1.4, color: t.textFaint),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _bottomBar(AppTokens t) {
     return Container(
       padding: EdgeInsets.fromLTRB(
         20,
@@ -675,7 +893,7 @@ class _BatchPageState extends State<BatchPage> {
             )
           : Row(
               children: [
-                if (_target != null)
+                if (_optimize || _target != null)
                   Padding(
                     padding: const EdgeInsets.only(right: 12),
                     child: OutlinedButton(
@@ -689,14 +907,8 @@ class _BatchPageState extends State<BatchPage> {
                   ),
                 Expanded(
                   child: FilledButton(
-                    onPressed: _target == null || targets.isEmpty
-                        ? null
-                        : _runAll,
-                    child: Text(
-                      _target == null
-                          ? 'Pick a format'
-                          : 'Convert ${_items.length} to ${_target!.upper}',
-                    ),
+                    onPressed: _runnable.isEmpty ? null : _runAll,
+                    child: Text(_runLabel()),
                   ),
                 ),
               ],
@@ -794,6 +1006,59 @@ String? _safeArchiveName(String raw) {
   return p.joinAll(parts);
 }
 
+/// One of the two things a batch can do. A pair of equal pills rather than a
+/// switch: neither mode is the "off" state of the other, and a mixed queue is a
+/// reason to reach for the second one deliberately.
+class _ModePill extends StatelessWidget {
+  const _ModePill({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: selected ? t.accent : Colors.transparent,
+          border: Border.all(color: selected ? t.accent : t.border),
+          borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 17, color: selected ? t.onAccent : t.textSecondary),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: selected ? t.onAccent : t.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _TargetPill extends StatelessWidget {
   const _TargetPill({
     required this.format,
@@ -831,8 +1096,24 @@ class _TargetPill extends StatelessWidget {
 }
 
 class _ItemRow extends StatelessWidget {
-  const _ItemRow({required this.item, this.onRemove});
+  const _ItemRow({
+    required this.item,
+    this.optimize = false,
+    this.blocked = false,
+    this.onRemove,
+  });
+
   final _Item item;
+
+  /// Whether the batch is re-encoding each file into its own format, which
+  /// changes what the row is about to be asked to do.
+  final bool optimize;
+
+  /// Whether this run will skip the file. Shown per row as well as counted in
+  /// the summary, because in a queue of forty the row is the only place a
+  /// specific file can be accounted for.
+  final bool blocked;
+
   final VoidCallback? onRemove;
 
   @override
@@ -840,6 +1121,7 @@ class _ItemRow extends StatelessWidget {
     final t = context.tokens;
     final job = item.job;
     final unsupported = item.format == null;
+    final skipped = unsupported || blocked;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -891,7 +1173,7 @@ class _ItemRow extends StatelessWidget {
               ),
               if (job?.status == JobStatus.done)
                 Icon(Icons.check_circle_rounded, size: 20, color: t.textPrimary)
-              else if (job?.status == JobStatus.failed || unsupported)
+              else if (job?.status == JobStatus.failed || skipped)
                 Icon(Icons.error_outline_rounded, size: 20, color: t.textFaint)
               else if (onRemove != null)
                 IconButton(
@@ -926,7 +1208,11 @@ class _ItemRow extends StatelessWidget {
     final size = item.sizeBytes > 0 ? humanBytes(item.sizeBytes) : '';
     if (job == null) {
       return [
+        // A file that will not be re-encoded says so here, rather than looking
+        // like one that is merely waiting its turn.
+        if (blocked) 'Skipped — this build cannot re-encode ${item.format!.upper}',
         if (item.label != null) 'from ${item.label}',
+        if (!blocked && optimize) 'Keep ${item.format!.upper}',
         size,
       ].where((s) => s.isNotEmpty).join(' · ');
     }
@@ -934,8 +1220,8 @@ class _ItemRow extends StatelessWidget {
       JobStatus.queued => 'Waiting',
       JobStatus.running =>
         job.indeterminate
-            ? 'Converting'
-            : 'Converting ${(job.progress * 100).toStringAsFixed(0)}%',
+            ? (optimize ? 'Optimizing' : 'Converting')
+            : '${optimize ? 'Optimizing' : 'Converting'} ${(job.progress * 100).toStringAsFixed(0)}%',
       JobStatus.done =>
         'Done · ${humanBytes(job.outputBytes)} · ${humanDuration(job.elapsed)}',
       JobStatus.cancelled => 'Cancelled',

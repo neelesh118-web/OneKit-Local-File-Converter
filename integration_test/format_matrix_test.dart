@@ -11,6 +11,7 @@ import 'package:onekit_converter/engine/engine.dart';
 import 'package:onekit_converter/engine/format.dart';
 import 'package:onekit_converter/engine/job.dart';
 import 'package:onekit_converter/engine/registry.dart';
+import 'package:onekit_converter/features/batch/batch_plan.dart';
 import 'package:path/path.dart' as p;
 
 /// Runs the real engine on a real device against every format OneKit claims.
@@ -67,6 +68,32 @@ void main() {
     final detail = job.errorDetail;
     // The engine's own reason, flattened onto one line so the report stays
     // scannable when a dozen conversions fail at once.
+    final reason = detail == null ? '' : '  >  ${detail.replaceAll('\n', ' | ')}';
+    failures[label] = '${job.error ?? job.status.name}$reason';
+    return null;
+  }
+
+  /// Re-encodes [source] into its own format — the Optimize path. Separate from
+  /// [convert] because it is a different job: same format in and out, and an
+  /// explicit instruction to re-encode rather than copy.
+  Future<String?> optimize(String label, String source, String ext) async {
+    final job = ConversionJob(
+      id: label,
+      sourcePath: source,
+      target: fmt(ext),
+      options: const ConvertOptions(quality: 60, videoCrf: 30),
+      optimize: true,
+    );
+    await ConversionEngine.instance.run(
+      job,
+      cancel: CancelToken(),
+      outputDirectory: work.path,
+    );
+    if (job.status == JobStatus.done && job.outputBytes > 0) {
+      passes.add(label);
+      return job.outputPath;
+    }
+    final detail = job.errorDetail;
     final reason = detail == null ? '' : '  >  ${detail.replaceAll('\n', ' | ')}';
     failures[label] = '${job.error ?? job.status.name}$reason';
     return null;
@@ -181,6 +208,71 @@ void main() {
       if (img == null) continue;
       await convert('$ext>pdf', img, 'pdf');
     }
+  }, timeout: const Timeout(Duration(minutes: 10)));
+
+  // ------------------------------------------------------------------ optimize
+
+  test('every optimizable format re-encodes into itself', () async {
+    // The catalogue never lists a self-pair, so nothing else in this suite
+    // exercises a same-format re-encode. Each format is produced from its
+    // family's seed first — a format that cannot be produced is skipped here,
+    // because the encode tests above already report that failure.
+    for (final f in FormatRegistry.all) {
+      if (!ConversionEngine.instance.canOptimize(f)) continue;
+      final seed = switch (f.family) {
+        Family.image => f.ext == 'png' ? pngSeed : await convert('opt:mk:${f.ext}', pngSeed, f.ext),
+        Family.audio => await convert('opt:mk:${f.ext}', wavSeed, f.ext),
+        Family.video => f.ext == 'mp4' ? mp4Seed : await convert('opt:mk:${f.ext}', mp4Seed, f.ext),
+        _ => null,
+      };
+      if (seed == null) continue;
+      await optimize('opt:${f.ext}>${f.ext}', seed, f.ext);
+    }
+  }, timeout: const Timeout(Duration(minutes: 30)));
+
+  test('a mixed queue optimizes with one shared setting', () async {
+    // What the Batch screen does, minus the screen: one quality for the whole
+    // queue, each file re-encoded into its own format. The target comes from
+    // the page's own rule, so this fails if the screen and the engine ever
+    // disagree about what a queued file becomes.
+    final queue = <String>[];
+    for (final ext in ['jpg', 'mp3', 'mp4']) {
+      final seed = switch (ext) {
+        'jpg' => await convert('batch:mk:$ext', pngSeed, ext),
+        'mp3' => await convert('batch:mk:$ext', wavSeed, ext),
+        _ => mp4Seed,
+      };
+      if (seed != null) queue.add(seed);
+    }
+    expect(queue.length, 3, reason: 'could not build the mixed queue');
+
+    const shared = ConvertOptions(quality: 55, videoCrf: 32, audioBitrateKbps: 96);
+    final outputs = <String>[];
+    for (final path in queue) {
+      final source = FormatRegistry.byExt(p.extension(path))!;
+      final target = batchTargetFor(source: source, shared: null, optimize: true);
+      expect(target?.ext, source.ext, reason: '${source.ext} must keep its format');
+
+      final job = ConversionJob(
+        id: 'batch:${source.ext}',
+        sourcePath: path,
+        source: source,
+        target: target!,
+        options: shared,
+        optimize: true,
+      );
+      await ConversionEngine.instance.run(
+        job,
+        cancel: CancelToken(),
+        outputDirectory: work.path,
+      );
+      expect(job.status, JobStatus.done, reason: job.errorDetail ?? job.error);
+      expect(job.outputPath, endsWith('.${source.ext}'));
+      expect(job.outputBytes, greaterThan(0));
+      outputs.add(job.outputPath!);
+    }
+    // Three files in, three out, and no two of them the same file.
+    expect(outputs.toSet().length, 3);
   }, timeout: const Timeout(Duration(minutes: 10)));
 
   // ------------------------------------------------- capability cross-check
