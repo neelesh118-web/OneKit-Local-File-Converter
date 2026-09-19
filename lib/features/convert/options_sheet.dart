@@ -15,11 +15,36 @@ class OptionsSheet extends StatefulWidget {
     required this.source,
     required this.target,
     required this.options,
-  });
+    this.onSavePreset,
+  }) : formats = const [];
 
-  final FileFormat source;
-  final FileFormat target;
+  /// The same sheet for a queue that spans formats — a batch Optimize, where
+  /// each file is re-encoded into its own format. There is no single target to
+  /// scope the sheet to, so a control appears when at least one file in the
+  /// queue understands it, and the settings apply to all of them.
+  const OptionsSheet.batch({
+    super.key,
+    required this.formats,
+    required this.options,
+    this.onSavePreset,
+  })  : source = null,
+        target = null;
+
+  final FileFormat? source;
+  final FileFormat? target;
   final ConvertOptions options;
+
+  /// Every format the sheet speaks for, when it spans more than one.
+  final List<FileFormat> formats;
+
+  /// Called when the user asks to keep these settings for later.
+  ///
+  /// The sheet does not know what the job is — a target format, or the file's
+  /// own format when optimizing — so naming and storing it belongs to the
+  /// screen that opened the sheet. Returns the name that was saved, or null
+  /// when the user backed out, which the sheet shows as a line of confirmation
+  /// rather than a snackbar it could not see behind itself.
+  final Future<String?> Function(ConvertOptions options)? onSavePreset;
 
   @override
   State<OptionsSheet> createState() => _OptionsSheetState();
@@ -27,6 +52,10 @@ class OptionsSheet extends StatefulWidget {
 
 class _OptionsSheetState extends State<OptionsSheet> {
   late ConvertOptions _o = widget.options;
+
+  /// Set once the settings have been kept as a preset, so the sheet can confirm
+  /// it without closing.
+  String? _savedName;
   late final TextEditingController _width =
       TextEditingController(text: widget.options.width?.toString() ?? '');
   late final TextEditingController _height =
@@ -34,17 +63,30 @@ class _OptionsSheetState extends State<OptionsSheet> {
   late final TextEditingController _pages =
       TextEditingController(text: widget.options.pdfPageRange ?? '');
 
+  /// What the sheet speaks for. One target for a conversion; every file in the
+  /// queue for a batch. Empty lists rather than null assertions, so a sheet
+  /// with nothing to describe still renders its one universal control instead
+  /// of throwing.
+  Iterable<FileFormat> get _targets =>
+      widget.formats.isNotEmpty ? widget.formats : [if (widget.target != null) widget.target!];
+  Iterable<FileFormat> get _sources =>
+      widget.formats.isNotEmpty ? widget.formats : [if (widget.source != null) widget.source!];
+
   bool get _showQuality =>
-      widget.target.lossy && (widget.target.family == Family.image);
+      _targets.any((f) => f.lossy && f.family == Family.image);
   bool get _showResize =>
-      widget.target.family == Family.image || widget.target.family == Family.video;
-  bool get _showAudio => widget.target.family == Family.audio;
-  bool get _showVideo => widget.target.family == Family.video;
-  bool get _showPdfSource => widget.source.ext == 'pdf';
+      _targets.any((f) => f.family == Family.image || f.family == Family.video);
+  bool get _showAudio => _targets.any((f) => f.family == Family.audio);
+  bool get _showVideo => _targets.any((f) => f.family == Family.video);
+  bool get _showPdfSource => _sources.any((f) => f.ext == 'pdf');
   bool get _showFps =>
-      widget.target.family == Family.video ||
-      (widget.source.family == Family.video &&
-          {'gif', 'apng', 'webp'}.contains(widget.target.ext));
+      _targets.any((f) => f.family == Family.video) ||
+      // A video source rendered into an animated image is the one case where
+      // the target is not a video but the frame rate still applies. It needs a
+      // pair, which a mixed queue does not have.
+      (widget.formats.isEmpty &&
+          widget.source!.family == Family.video &&
+          {'gif', 'apng', 'webp'}.contains(widget.target!.ext));
 
   @override
   void dispose() {
@@ -54,15 +96,33 @@ class _OptionsSheetState extends State<OptionsSheet> {
     super.dispose();
   }
 
-  void _apply() {
-    Navigator.pop(
-      context,
-      _o.copyWith(
+  /// The settings as they stand, including cleared fields.
+  ///
+  /// Built field by field rather than with `copyWith`, which cannot clear one:
+  /// a resize box the user emptied has to mean no resize, not the last number
+  /// that was typed in it — and a recipe that is saved has to be the recipe that
+  /// runs.
+  ConvertOptions get _current => ConvertOptions(
+        quality: _o.quality,
         width: int.tryParse(_width.text.trim()),
         height: int.tryParse(_height.text.trim()),
+        audioBitrateKbps: _o.audioBitrateKbps,
+        sampleRate: _o.sampleRate,
+        videoCrf: _o.videoCrf,
+        fps: _o.fps,
+        stripMetadata: _o.stripMetadata,
         pdfPageRange: _pages.text.trim().isEmpty ? null : _pages.text.trim(),
-      ),
-    );
+        pdfDpi: _o.pdfDpi,
+        maxEdge: _o.maxEdge,
+      );
+
+  void _apply() => Navigator.pop(context, _current);
+
+  Future<void> _savePreset() async {
+    final save = widget.onSavePreset;
+    if (save == null) return;
+    final name = await save(_current);
+    if (name != null && mounted) setState(() => _savedName = name);
   }
 
   @override
@@ -78,11 +138,19 @@ class _OptionsSheetState extends State<OptionsSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('${widget.target.upper} options',
-                    style: Theme.of(context).textTheme.titleLarge),
+                Text(
+                  widget.formats.isEmpty
+                      ? '${widget.target!.upper} options'
+                      : 'Optimize options',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 const SizedBox(height: 4),
                 Text(
-                  'Leave anything blank to keep the original.',
+                  widget.formats.isEmpty
+                      ? 'Leave anything blank to keep the original.'
+                      : 'One setting for the whole queue — each file is re-encoded '
+                          'into its own format. Leave anything blank to keep the '
+                          'original.',
                   style: TextStyle(fontSize: 13, color: t.textFaint),
                 ),
                 const SizedBox(height: 18),
@@ -216,6 +284,39 @@ class _OptionsSheetState extends State<OptionsSheet> {
                   width: double.infinity,
                   child: FilledButton(onPressed: _apply, child: const Text('Apply')),
                 ),
+                if (widget.onSavePreset != null) ...[
+                  const SizedBox(height: 4),
+                  if (_savedName != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(Icons.bookmark_added_outlined, size: 17, color: t.textFaint),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Saved as "$_savedName". It is on Home and above the '
+                              'target grid, and runs in one tap from there.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1.35,
+                                color: t.textFaint,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        onPressed: _savePreset,
+                        icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+                        label: const Text('Save as a preset'),
+                      ),
+                    ),
+                ],
               ],
             ),
           ),

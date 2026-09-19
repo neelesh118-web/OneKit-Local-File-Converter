@@ -2,9 +2,11 @@ import 'package:file_picker/file_picker.dart' show FilePicker, FileType;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
+import 'package:provider/provider.dart';
 
 import '../../core/ads/ads.dart';
 import '../../core/data/history_store.dart';
+import '../../core/data/preset_store.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/brand.dart';
 import '../../core/widgets/common.dart';
@@ -13,6 +15,7 @@ import '../../engine/format.dart';
 import '../../engine/registry.dart';
 import '../batch/batch_page.dart';
 import '../convert/convert_page.dart';
+import '../presets/preset_chip.dart';
 
 /// The landing tab: pick a file, or jump straight to a conversion you already
 /// know you want.
@@ -101,6 +104,40 @@ class _HomePageState extends State<HomePage> {
     context.go('/batch');
   }
 
+  /// Quick action: pick a file and offer to shrink it, keeping its own format.
+  /// The convert screen decides whether the format can really be re-encoded;
+  /// one that cannot falls back to the normal target picker.
+  Future<void> _compress() async {
+    final file = await FilePicker.pickFile();
+    final path = file?.path;
+    if (path == null || !mounted) return;
+    context.push(
+      '/convert',
+      extra: ConvertArgs(paths: [path], optimize: true, displayNames: [file!.name]),
+    );
+  }
+
+  /// Quick action: run a saved recipe on a file the user picks now.
+  ///
+  /// The preset travels in the route args and the convert screen starts it as
+  /// soon as it opens, so a preset really is one tap plus the file picker.
+  Future<void> _runPreset(ConversionPreset preset) async {
+    final file = await FilePicker.pickFile();
+    final path = file?.path;
+    if (path == null || !mounted) return;
+    context.push(
+      '/convert',
+      extra: ConvertArgs(
+        paths: [path],
+        target: preset.target,
+        optimize: preset.isOptimize,
+        options: preset.options,
+        presetName: preset.name,
+        displayNames: [file!.name],
+      ),
+    );
+  }
+
   /// Quick action: pick a video and extract its audio as MP3.
   Future<void> _extractAudio() async {
     final file = await FilePicker.pickFile(
@@ -122,6 +159,9 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
+    // Recipes the user saved, watched rather than read once: they can be added
+    // from a conversion without leaving this screen in front of them.
+    final presets = context.watch<PresetStore>().presets;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
@@ -140,6 +180,29 @@ class _HomePageState extends State<HomePage> {
             icon: const Icon(Icons.graphic_eq_rounded, size: 19),
             label: const Text('Extract MP3 from video'),
           ),
+        ),
+        const SizedBox(height: 12),
+        // Quick actions: shrink a file without changing what it is, or open the
+        // PDF toolbox. Two halves of one row, so the shortcuts never push the
+        // real content off the first screen.
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _compress,
+                icon: const Icon(Icons.compress_rounded, size: 19),
+                label: const Text('Compress'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => context.push('/pdf-tools'),
+                icon: const Icon(Icons.picture_as_pdf_rounded, size: 19),
+                label: const Text('PDF tools'),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Row(
@@ -161,6 +224,24 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
+        if (presets.isNotEmpty) ...[
+          SectionTitle(
+            'Your presets',
+            trailing: TextButton(
+              onPressed: () => context.push('/presets'),
+              child: const Text('Manage'),
+            ),
+          ),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final preset in presets)
+                PresetChip(preset: preset, onTap: () => _runPreset(preset)),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
         if (_recent.isNotEmpty) ...[
           SectionTitle(
             'Recent',

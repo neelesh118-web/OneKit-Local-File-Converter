@@ -206,7 +206,35 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
 
+              Panel(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: ListTile(
+                  leading: const Icon(Icons.bookmark_outline_rounded),
+                  title: const Text('Presets'),
+                  subtitle: Text(
+                    'Recipes you have saved: a format plus its settings, ready in one tap.',
+                    style: TextStyle(fontSize: 12.5, color: t.textFaint),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/presets'),
+                ),
+              ),
+
               const SectionTitle('Support'),
+              Panel(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: ListTile(
+                  leading: const Icon(Icons.bug_report_outlined),
+                  title: const Text('Send a report'),
+                  subtitle: Text(
+                    'Sends a failure with this device, this build and the engine\'s own output.',
+                    style: TextStyle(fontSize: 12.5, color: t.textFaint),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/feedback'),
+                ),
+              ),
+              const SizedBox(height: 10),
               const SupportCard(),
               const SizedBox(height: 10),
               Panel(

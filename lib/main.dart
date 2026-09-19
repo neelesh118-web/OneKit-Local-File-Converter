@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'app.dart';
+import 'core/data/preset_store.dart';
 import 'core/data/settings_store.dart';
 
 Future<void> main() async {
@@ -18,16 +19,23 @@ Future<void> main() async {
 
   final results = await Future.wait([
     SettingsStore.load(),
+    PresetStore.load(),
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]),
   ]);
   final settings = results.first as SettingsStore;
+  final presets = results[1] as PresetStore;
 
   runApp(
-    ChangeNotifierProvider<SettingsStore>.value(
-      value: settings,
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<SettingsStore>.value(value: settings),
+        // Saved recipes are read by Home, the convert screen and the batch
+        // sheet, so they live above the router like the settings do.
+        ChangeNotifierProvider<PresetStore>.value(value: presets),
+      ],
       child: const LocalFileConverterApp(),
     ),
   );
