@@ -686,6 +686,51 @@ Some paragraph text.
       expect(orphans, isEmpty, reason: 'unroutable pairs: ${orphans.take(20)}');
     });
 
+    test('optimize routes to a converter that re-encodes, not to a pair', () {
+      expect(
+        ConversionEngine.instance.resolveOptimize(fmt('jpg'))!.name,
+        'FFmpeg',
+      );
+      expect(
+        ConversionEngine.instance.resolveOptimize(fmt('mp4'))!.name,
+        'FFmpeg',
+      );
+      // Nothing claims a format whose encoder this build lacks, and nothing
+      // claims the formats other converters own.
+      expect(ConversionEngine.instance.resolveOptimize(fmt('heic')), isNull);
+      expect(ConversionEngine.instance.resolveOptimize(fmt('wav')), isNull);
+      expect(ConversionEngine.instance.resolveOptimize(fmt('json')), isNull);
+
+      // The engine does not invent the capability: every format it calls
+      // optimizable is one the resolved converter claims for itself. Routing a
+      // self-pair as an ordinary conversion is not a route the app offers — no
+      // self-pair exists in the matrix, which the registry suite asserts.
+      for (final f in FormatRegistry.all) {
+        if (!ConversionEngine.instance.canOptimize(f)) continue;
+        expect(
+          ConversionEngine.instance.resolveOptimize(f)!.supportsOptimize(f),
+          isTrue,
+          reason: f.ext,
+        );
+      }
+    });
+
+    test('an optimize job on an unoptimizable format fails honestly', () async {
+      final job = ConversionJob(
+        id: 'opt-fail',
+        sourcePath: write('data.json', '{"a": 1}').path,
+        target: fmt('json'),
+        optimize: true,
+      );
+      await ConversionEngine.instance.run(
+        job,
+        cancel: CancelToken(),
+        outputDirectory: tmp.path,
+      );
+      expect(job.status, JobStatus.failed);
+      expect(job.error, contains('cannot be re-encoded smaller'));
+    });
+
     test('cancellation is observed before any work begins', () async {
       final cancel = CancelToken()..cancel();
       final job = ConversionJob(

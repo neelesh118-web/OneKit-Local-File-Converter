@@ -44,6 +44,7 @@ class ConvertRequest {
     required this.onProgress,
     required this.cancel,
     this.extraOutputs,
+    this.optimize = false,
   });
 
   final String inputPath;
@@ -58,6 +59,12 @@ class ConvertRequest {
   /// rendered to images, for example) append the additional paths here.
   /// [outputPath] always remains the primary result.
   final List<String>? extraOutputs;
+
+  /// True when this is an Optimize job: [from] and [to] are the same format and
+  /// the file is being re-encoded smaller rather than converted. Any stream-copy
+  /// shortcut has to be skipped — copying a file into its own container is a
+  /// no-op, which is the opposite of what the user asked for.
+  final bool optimize;
 }
 
 /// A backend that knows how to turn one family of formats into another.
@@ -70,6 +77,17 @@ abstract class FileConverter {
   /// Whether this converter claims the given pair. The first converter in the
   /// engine's list that claims a pair handles it.
   bool supports(FileFormat from, FileFormat to);
+
+  /// Whether this converter can re-encode [format] into itself at a smaller
+  /// size — the Optimize path.
+  ///
+  /// This is deliberately not part of [supports], and self-pairs are never part
+  /// of the advertised conversion matrix: "JPG to JPG" is not a conversion, and
+  /// a catalogue that lists it would be claiming a route no converter offers.
+  /// A converter that answers true here must genuinely re-encode the file, at
+  /// lower quality or smaller dimensions, and report a real result either way.
+  /// The default is no, so a converter has to opt in explicitly.
+  bool supportsOptimize(FileFormat format) => false;
 
   Future<void> convert(ConvertRequest r);
 }

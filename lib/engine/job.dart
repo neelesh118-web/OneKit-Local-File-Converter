@@ -51,6 +51,26 @@ class ConvertOptions {
   /// or rendering a preview thumbnail.
   final int? maxEdge;
 
+  /// The choices that were made, in one line, with anything left at its default
+  /// absent: a report, or a saved preset, should show the decisions rather than
+  /// every field that exists. 'defaults' when nothing was changed.
+  String describe() {
+    const base = ConvertOptions();
+    final parts = <String>[
+      if (quality != base.quality) 'quality $quality',
+      if (width != null || height != null)
+        'resize ${width?.toString() ?? 'auto'}x${height?.toString() ?? 'auto'}',
+      if (audioBitrateKbps != null) 'audio $audioBitrateKbps kbps',
+      if (sampleRate != null) 'sample rate $sampleRate',
+      if (videoCrf != null) 'CRF $videoCrf',
+      if (fps != null) '$fps fps',
+      if (stripMetadata) 'strip metadata',
+      if (pdfPageRange != null) 'pages $pdfPageRange',
+      if (pdfDpi != base.pdfDpi) 'PDF $pdfDpi dpi',
+    ];
+    return parts.isEmpty ? 'defaults' : parts.join(', ');
+  }
+
   ConvertOptions copyWith({
     int? quality,
     int? width,
@@ -89,6 +109,7 @@ class ConversionJob {
     this.options = const ConvertOptions(),
     FileFormat? source,
     this.displayName,
+    this.optimize = false,
   }) : source = source ?? FormatRegistry.byExt(p.extension(sourcePath));
 
   final String id;
@@ -99,6 +120,13 @@ class ConversionJob {
 
   /// Overrides the on-disk name in the UI (SAF picks can have opaque names).
   final String? displayName;
+
+  /// Re-encode the source into its own format instead of converting it into a
+  /// different one — the Optimize path. [target] equals [source] for these
+  /// jobs, which is why they can never come from [FormatRegistry.pairs]: the
+  /// capability lives on the converters, and the catalogue stays free of
+  /// self-pairs that would advertise nothing.
+  final bool optimize;
 
   JobStatus status = JobStatus.queued;
 
@@ -145,6 +173,12 @@ class ConversionJob {
   }
 
   ConversionPair? get pair => source == null ? null : ConversionPair(source!, target);
+
+  /// The one-line description of what this job is doing, for the running and
+  /// finished screens. An optimize job would otherwise read as "JPG to JPG",
+  /// which says nothing about what is happening to the file.
+  String get headline =>
+      optimize ? '${target.upper} · re-encoded in place' : (pair?.shortLabel ?? target.upper);
 
   bool get isTerminal =>
       status == JobStatus.done || status == JobStatus.failed || status == JobStatus.cancelled;

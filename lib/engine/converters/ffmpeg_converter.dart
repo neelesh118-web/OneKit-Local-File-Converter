@@ -37,11 +37,36 @@ class FfmpegConverter extends FileConverter {
 
   static const _timelineFamilies = {Family.audio, Family.video};
 
+  static const _handledFamilies = {Family.audio, Family.video, Family.image};
+
   @override
-  bool supports(FileFormat from, FileFormat to) {
-    const handled = {Family.audio, Family.video, Family.image};
-    return handled.contains(from.family) && handled.contains(to.family);
+  bool supports(FileFormat from, FileFormat to) =>
+      _handledFamilies.contains(from.family) && _handledFamilies.contains(to.family);
+
+  /// Formats FFmpeg can re-encode into themselves, for the Optimize path.
+  ///
+  /// The gate is the registry's own honesty rule — a re-encode needs a decoder
+  /// *and* an encoder, so anything read-only or write-only is out, which is
+  /// what keeps HEIC, DDS, PSD and the rest of this build's missing encoders
+  /// from being offered. On top of that only formats where a re-encode cannot
+  /// deliver anything are excluded: raw elementary streams, whose whole point
+  /// is to have no container to re-mux, and the broadcast formats whose
+  /// geometry is mandated rather than chosen, so a resize could not be honoured.
+  /// Lossless audio is excluded too, for the obvious reason that re-encoding a
+  /// FLAC cannot make it smaller.
+  @override
+  bool supportsOptimize(FileFormat f) {
+    if (!_handledFamilies.contains(f.family)) return false;
+    if (!f.read || !f.write) return false;
+    if (_notOptimizable.contains(f.ext)) return false;
+    if (f.family == Family.audio && !f.lossy) return false;
+    return true;
   }
+
+  static const _notOptimizable = {
+    'h264', 'hevc', 'y4m', 'ivf', // raw elementary streams
+    'dv', 'mxf', // fixed broadcast geometry
+  };
 
   @override
   Future<void> convert(ConvertRequest r) async {
@@ -237,6 +262,10 @@ class FfmpegConverter extends FileConverter {
   /// joined string, so paths containing spaces or quotes cannot break out.
   /// Whether the video stream will be copied rather than re-encoded.
   static bool _willCopyVideo(ConvertRequest r, _Probe probe) {
+    // An optimize job exists precisely to re-encode. Copying the same stream
+    // back into the same container would rewrite the file byte for byte and
+    // change nothing about its size.
+    if (r.optimize) return false;
     final o = r.options;
     final wantsReencode = o.width != null ||
         o.height != null ||
@@ -271,7 +300,9 @@ class FfmpegConverter extends FileConverter {
       // the user has not asked for a different bitrate or sample rate, since
       // honouring those requires actually re-encoding.
       final untouched = o.audioBitrateKbps == null && o.sampleRate == null;
-      if (untouched && _canCopyAudio(probe.audioCodec, r.to)) {
+      // An optimize job must re-encode even when bit-identical copying is
+      // available, since copying is exactly what it is not for.
+      if (!r.optimize && untouched && _canCopyAudio(probe.audioCodec, r.to)) {
         args.addAll(['-c:a', 'copy']);
         if (o.stripMetadata) args.addAll(['-map_metadata', '-1']);
         final forcedAudio = _forcedFormat[r.to.ext];

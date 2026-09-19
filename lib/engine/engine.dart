@@ -45,7 +45,25 @@ class ConversionEngine {
     return null;
   }
 
+  /// The converter that can re-encode [format] into itself at a smaller size,
+  /// or null when no engine can. Asked separately from [resolve] because an
+  /// Optimize job is not a conversion pair and never appears in the registry's
+  /// advertised matrix — the honest answer comes from the converters
+  /// themselves, exactly as it does for the pairs.
+  FileConverter? resolveOptimize(FileFormat format) {
+    for (final c in converters) {
+      if (c.supportsOptimize(format)) return c;
+    }
+    return null;
+  }
+
   bool canConvert(FileFormat from, FileFormat to) => resolve(from, to) != null;
+
+  /// Whether [format] can be shrunk without changing it — the Optimize path.
+  /// Read *and* write is required: a re-encode needs a decoder and an encoder,
+  /// and a format missing either cannot be improved by one.
+  bool canOptimize(FileFormat format) =>
+      format.read && format.write && resolveOptimize(format) != null;
 
   /// Maximum size for Dart-based converters (PDF, documents, archives).
   /// Above this, only FFmpeg-based conversions (audio/video/image) are
@@ -83,24 +101,25 @@ class ConversionEngine {
         throw ConversionException('The source file is no longer available.');
       }
 
+      // Routing happens before the size gate so an unsupported request is
+      // refused for the right reason rather than for the size of the file.
+      final converter = job.optimize ? resolveOptimize(from) : resolve(from, job.target);
+      if (converter == null) {
+        throw ConversionException(
+          job.optimize
+              ? '${from.upper} files cannot be re-encoded smaller. Convert to a different format instead.'
+              : '${from.upper} to ${job.target.upper} is not supported.',
+        );
+      }
+
       // Large-file gate: Dart-based converters load entire files into memory,
       // so files above the limit are restricted to FFmpeg-based conversions
       // which stream data through pipes.
       final sourceSize = await File(job.sourcePath).length();
-      if (sourceSize > _maxDartConverterBytes) {
-        final converter = resolve(from, job.target);
-        if (converter != null && !_ffmpegFamilies.contains(from.family)) {
-          throw ConversionException(
-            '${from.upper} files over ${humanBytes(_maxDartConverterBytes)} are too large '
-            'for this converter. Try an audio, video, or image conversion instead.',
-          );
-        }
-      }
-
-      final converter = resolve(from, job.target);
-      if (converter == null) {
+      if (sourceSize > _maxDartConverterBytes && !_ffmpegFamilies.contains(from.family)) {
         throw ConversionException(
-          '${from.upper} to ${job.target.upper} is not supported.',
+          '${from.upper} files over ${humanBytes(_maxDartConverterBytes)} are too large '
+          'for this converter. Try an audio, video, or image conversion instead.',
         );
       }
 
@@ -109,7 +128,7 @@ class ConversionEngine {
       // Reserve the name atomically. A batch may have several workers asking
       // for the same basename at the same time; an exists-then-write check is
       // racy and can make FFmpeg overwrite another result.
-      final outPath = await _reserveUniquePath(
+      final outPath = await reserveUniquePath(
         dir,
         job.baseName,
         job.target.ext,
@@ -132,6 +151,7 @@ class ConversionEngine {
           options: job.options,
           cancel: cancel,
           extraOutputs: extras,
+          optimize: job.optimize,
           onProgress: (value, {bool indeterminate = false}) {
             // Progress must never go backwards; ffmpeg occasionally reports a
             // stale statistic after a seek.
@@ -203,8 +223,10 @@ class ConversionEngine {
     return Directory(p.join(base.path, 'lfc_work'));
   }
 
-  /// Atomically reserves a path so concurrent batch workers cannot collide.
-  static Future<String> _reserveUniquePath(
+  /// Atomically reserves a path so concurrent workers — batch conversions, or
+  /// the several files a PDF split writes — cannot collide. Public because the
+  /// PDF toolbox writes its own outputs and must reserve names the same way.
+  static Future<String> reserveUniquePath(
     String dir,
     String base,
     String ext,
