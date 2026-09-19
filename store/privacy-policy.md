@@ -59,6 +59,22 @@ The app does **not** request storage permission. Files reach the app only
 through Android's own file picker, which means you choose each file
 explicitly, and results are shared out through Android's share sheet.
 
+## Diagnostics and reports
+
+The app has no analytics, no crash-reporting SDK, and no endpoint to send
+anything to. If a conversion fails, the result screen offers **Send a report**.
+The app then writes a plain-text report containing what you typed, the device
+model, the Android version and security patch, the ABI the installed build is
+running, the app version and build number, where the build was installed from,
+the conversion options, and the engine's own output for the failure — FFmpeg's
+log tail or the decoder's message. The whole text is shown on screen before you
+send it, and it leaves the device only through a share sheet you choose, to a
+recipient you pick.
+
+The report contains no file contents, and the folder paths an error message
+mentions are trimmed back to the file name. The names of the files involved are
+included, because a failure cannot be identified without them.
+
 ## Children
 
 The app is a general-purpose utility and is not directed at children. We do not

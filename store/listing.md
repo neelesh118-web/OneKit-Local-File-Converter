@@ -20,9 +20,9 @@ Convert 5,800+ file formats offline. No upload, no account, nothing leaves you.
 This app converts your files on your phone. Not on a server somewhere — on your
 device, with no upload, no account and no waiting in a queue.
 
-That one decision changes everything about how a converter behaves. Your files
-stay private. It works on a plane, on the metro, on no signal at all. There is
-no 100 MB cap, no daily limit, and no "upgrade to convert this one".
+That one decision changes how a converter behaves. Your files stay private. It
+works on a plane, on the metro, on no signal at all. There is no 100 MB cap and
+no daily limit.
 
 5,890 CONVERSIONS, 148 FORMATS
 
@@ -40,20 +40,24 @@ no 100 MB cap, no daily limit, and no "upgrade to convert this one".
   unpack WOFF for the web
 
 And the conversions people actually search for: HEIC to JPG, MP4 to MP3,
-WOFF to TTF,
-WebP to PNG, PDF to JPG, JPG to PDF, DOCX to PDF, MKV to MP4, CSV to JSON,
-SRT to VTT, ZIP to TAR.
+WOFF to TTF, WebP to PNG, PDF to JPG, JPG to PDF, DOCX to PDF, MKV to MP4,
+CSV to JSON, SRT to VTT, ZIP to TAR.
 
 WHAT IT DOES
 
 Select a file — the app works out every format it can become, and shows you
 only those. No dead ends.
 
-Batch convert — queue up dozens of files and convert them all to one format,
-with a real progress bar for the batch and for each file.
+Share a file to it — from the Gallery, from Files, from any share sheet or
+"Open with" — and it opens on that file ready to convert, without asking for a
+single permission. Share several at once and they land in the batch queue.
 
-Bulk ZIP — hand it a ZIP and it converts everything inside, then packs the
-results back into a new ZIP for you.
+Batch convert — queue up dozens of files, or hand it a ZIP and it converts
+everything inside, then packs the results back into a new ZIP. Convert them all
+to one format, or shrink each one where it is: that keeps every file in its own
+format, so a mixed pile of photos, videos and audio gets lighter in one go with
+a single quality setting. There is a real progress bar for the batch and for
+each file.
 
 Real progress — the percentage you see comes from the encoder itself, not from
 a spinner pretending to work. When a format genuinely has nothing to measure,
@@ -62,6 +66,9 @@ The app says so instead of inventing a number.
 Fine control — quality, resize, bitrate, sample rate, video quality, frame
 rate, PDF page ranges and render density, and a switch to strip EXIF, location
 and other metadata from the output.
+
+Presets — keep a recipe you use often and run it in one tap: a format plus its
+settings, as a chip on the home screen and above the target list.
 
 History — everything you have converted, with how long it took and how much
 space you saved.
@@ -73,6 +80,10 @@ Previews — the app shows you the result itself. Convert to an unusual format
 and you can still see it, even with no other app on your phone that
 understands it.
 
+When something fails — the result card offers a report: your notes, the device
+and build it failed on, and the engine's own error output, all on screen before
+you send it, and sent only where you choose.
+
 DESIGN
 
 Pure black and white, in both directions: white buttons on black in dark mode,
@@ -83,15 +94,19 @@ PRIVACY
 
 There is no server. There is no sign-in. There is no analytics on your files.
 The conversion code never touches the network — the only thing in the app that
-does is the ad banner. Your history and settings live in private app storage
-and go nowhere.
+does is the ad banner. Your history, presets and settings live in private app
+storage and go nowhere.
+
+Nothing about a failure is sent anywhere either. A report is a text file you
+choose to share, it contains no file contents, and the folder paths an error
+message mentions are removed before it is even shown to you.
 
 The app is free. If it saves you time, there is a tip jar in Settings.
 
 OPEN SOURCE
 
-The full source code is available. Every conversion runs locally — you can
-verify that nothing leaves your device.
+The full source code is available — you can verify that nothing leaves your
+device.
 ```
 
 ## Category
@@ -137,9 +152,12 @@ manifest — plugins merge permissions in, and two of them had to be stripped.
 **No storage or media permission is requested.** `READ_EXTERNAL_STORAGE` and
 `READ_MEDIA_IMAGES` / `VIDEO` / `AUDIO` were being merged in by the file picker
 plugin and are explicitly removed in the manifest. Files reach the app only
-through Android's own document picker, which requires no permission, and
-results are written to app-private storage and shared out via the system share
-sheet. Verified on device: picking still works with all of them removed.
+through Android's own document picker, its share sheet, or "Open with" — none
+of which requires a permission, because Android hands the app a temporary read
+grant on the URI it was given — and results are written to app-private storage
+and shared out via the system share sheet. Verified on device: picking still
+works with all of them removed, and sharing adds nothing to the permission
+list (checked against the built APK with `aapt2 dump badging`).
 
 Keeping them would have been untrue to the privacy claim above and would have
 pulled the app into Google's **Photo and Video Permissions** policy review for

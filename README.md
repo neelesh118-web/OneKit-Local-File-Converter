@@ -32,6 +32,13 @@ read them. The registry is only allowed to advertise routes a converter
 actually claims, and a test asks FFmpeg directly which codecs it contains and
 fails if the catalogue overstates it.
 
+The same rule keeps **Optimize** honest. Re-encoding a file into its own format
+is a real capability, but "JPG to JPG" is not a conversion, so no self-pair ever
+enters the matrix or the target picker: the converters declare
+`supportsOptimize` separately, the engine asks them directly, and a format is
+only offered when it can both be decoded *and* encoded — which is what leaves
+HEIC, DDS and WAV out. 61 of the 148 formats qualify.
+
 The same rule shapes the font family. TTC, WOFF, TTF and OTF are all sfnt
 containers, so extracting a collection's face or packing WOFF's zlib tables
 is honest container work — but TTF ↔ OTF means translating glyph outlines
@@ -43,14 +50,54 @@ refuses at run time to label a face with the wrong outline format.
 
 - **Single convert** — pick a file, see every format it can become, watch a real
   percentage (from ffmpeg's own statistics stream, never a fake timer).
-- **Batch** — many files at once, one shared target, honest overall progress.
+- **Optimize** — shrink a file without changing what it is. JPG, PNG, WebP,
+  MP4, MP3 and 56 other formats re-encode into themselves at a lower quality,
+  a smaller size, or with the metadata stripped, and the result screen reports
+  honestly when a re-encode came out *larger* instead of hiding it.
+- **Share in** — send a file to OneKit from any app's share sheet, or hand it
+  over with "Open with" from Files. Several files shared at once land in Batch.
+  This adds **no permission**: Android hands the app a temporary read grant on
+  the URI it was given, the file is copied into the app's own scratch space, and
+  that copy is cleared by Settings' "Clear working files" along with everything
+  else. The Open-with list is deliberately curated rather than `*/*` — OneKit
+  offers itself for the formats it can actually convert, not for everything on
+  the device.
+- **Batch** — many files at once, honest overall progress, and a choice of what
+  the batch does: convert everything to one format, or **Optimize each**, which
+  re-encodes every file into its own format at one shared quality. The second is
+  how a mixed queue gets smaller — a folder of photos, a folder of clips, or a
+  ZIP that came out of neither — because there is no format they all share to be
+  converted into. Files this build cannot re-encode (lossless audio, or a format
+  with no encoder in it) are counted and skipped before the run rather than
+  failed one at a time.
 - **Bulk ZIP** — drop in a ZIP and the app converts everything inside it, then
   packs the results back into a ZIP.
+- **PDF tools** — merge any number of PDFs, split one by page range or into
+  single pages, rotate the pages you name, and compress. The first three are
+  pdfium container work: pages are imported, rotated and deleted whole, so
+  text, fonts and vectors come through untouched. Compress offers that same
+  lossless re-save (it rewrites the file and drops what nothing refers to) and,
+  separately, a rasterising mode that really shrinks a scan — labelled for what
+  it is, because the text layer does not survive it.
 - **History** — every conversion, with time taken and space saved.
+- **Failure reports** — when something does not work, the result card offers
+  "Send a report". It attaches the device and build it failed on, the engine's
+  own output for the failure (FFmpeg's log tail, the decoder's message), and the
+  recent failures from history — all of it on screen, in full, before you send
+  it. The report is a plain-text file handed to your share sheet; the app never
+  posts it anywhere. File names travel with it; the folder paths an engine log
+  mentions are trimmed back to the file name first.
 - **Files** — a file manager over the output folder: search, sort, multi-select,
   share, delete, or re-convert.
 - **Per-format options** — quality, resize, bitrate, sample rate, CRF, frame
   rate, PDF page ranges and render DPI, metadata stripping.
+- **Presets** — keep a recipe and reuse it in one tap. Save the target plus the
+  settings that suit it ("Web photos", "Smaller, same format"), and it appears as
+  a chip on Home and above the target grid. Tapping it sets the recipe and starts
+  the job — including optimize recipes, which keep whatever format the next file
+  happens to be. A preset is only offered for a file it can actually run on, so a
+  recipe saved for videos never appears on a spreadsheet: the applicability rule
+  is asked of the engine, exactly as the conversion matrix is.
 - **Built-in previews** — converting to QOI or DPX should not mean you can
   never look at the result. The app renders previews itself: images and video
   frames and PDF pages, the opening lines of text and data files, and the
@@ -98,20 +145,61 @@ lib/
       data_converter.dart    JSON/CSV/XML/YAML/INI/TOML/SQL
       subtitle_converter.dart 10 subtitle formats via a Cue pivot
       archive_converter.dart  containers and single streams
-      pdf_converter.dart      PDF in and out
-      ebook_converter.dart    EPUB/FB2
-      font_converter.dart     TTC / WOFF / sfnt container work
+    pdf_converter.dart      PDF in and out
+    ebook_converter.dart    EPUB/FB2
+    font_converter.dart     TTC / WOFF / sfnt container work
+  pdf/
+    page_range.dart         the one "1-3,7,10-" parser, shared by converter
+                            and toolbox so the syntax cannot mean two things
+    pdf_plan.dart           what a toolbox run will write, worked out before
+                            any file is touched — and testable on the host
+    pdf_toolbox.dart        the pdfium calls that carry the plan out
   core/       theme, widgets (starfield, pulse, brand), ads, storage
-  features/   home, convert, batch, history, files, settings, about
+              share/  the Dart side of the Android share intake
+              diagnostics/  the failure report: what the device is, what the
+                            engine said, and a preview of every word of it
+  android/    MainActivity.kt handles SEND / SEND_MULTIPLE / VIEW, copies the
+              shared file into the scratch space and hands Dart a path
+  features/   home, convert, batch, pdf_tools, history, files, settings, about
 ```
 
 Every converter declares which pairs it claims. The engine asks each in
 priority order and the first match wins, so the specialised pure-Dart backends
 sit ahead of the FFmpeg catch-all.
 
+What a queued file becomes is decided in one place
+(`features/batch/batch_plan.dart`): the shared target when converting, the
+file's own format when optimizing, or nothing at all when this build cannot do
+it. The screen's counts and the run loop both read that rule, so the button
+cannot promise a file the queue would skip.
+
 `test/converters_test.dart` runs a real file through every pure-Dart converter
 and asserts on the bytes that come back, including a guard that **every
 advertised pair resolves to a converter**.
+
+The PDF toolbox is split the same way: `pdf_plan.dart` decides which pages go
+where and is covered on the host (`test/pdf_tools_test.dart`), while
+`pdf_toolbox.dart` only carries the plan out. `integration_test/pdf_tools_test.dart`
+runs that second half on a device against real pdfium, and asserts on what comes
+back out of the PDF — page counts, the order of the text, the rotation stored on
+the page, and whether the text layer survived — rather than on the tool
+reporting success.
+
+A preset is a recipe plus the rule for when it applies
+(`core/data/preset_store.dart`). It stores a format *extension* rather than a
+pair, which is what lets it outlive the file it was made from — and its
+applicability is asked of the engine, so a preset that cannot run is kept out of
+the chips rather than offered and then failed. The recipe is described by
+`ConvertOptions.describe()`, the same method a failure report uses, so one set of
+settings never has two vocabularies.
+
+A failure report is assembled in one function that both entry points call, so
+Settings and a failed result card cannot send two different things. What the
+host can check is the text: that the engine's reason is in it, that a
+kilometre-long log is clipped to its tail, and that the folders a path was
+found in are not — `test/diagnostics_test.dart`. What only a device can check is
+that the Kotlin channel answers at all and that a report can be written where
+Settings' "Clear working files" will clean it up: `integration_test/diagnostics_test.dart`.
 
 `integration_test/format_matrix_test.dart` covers what the host cannot reach —
 FFmpeg and pdfium — by walking the registry on a real device: every decodable
@@ -175,3 +263,20 @@ the repository URL.
 
 There is no network code in the conversion path. The only outbound traffic in
 the whole app is AdMob. History and settings live in app-private storage.
+
+The app requests no storage permission, including for sharing: a file handed
+over by another app arrives as a URI with a read grant for OneKit alone. Files
+reach the app by the user picking them, sharing them, or handing them over with
+"Open with" — never by scanning the device.
+
+Nothing about a failure leaves the app on its own either. "Send a report"
+writes the plain-text report into the same working directory Settings clears and
+hands it to the share sheet; there is no endpoint, no library and no code path
+that could post it. It carries the device model, the Android release, the ABI
+the installed build runs, the app version and build number, where the build was
+installed from, the engine's own reason for each failure, and the file names
+involved — no file contents, and not the folders they live in. Every line of it
+is on screen before it is sent, so the decision stays with the person who owns
+the phone. `test/share_intake_test.dart` fails
+the build if a storage permission ever shows up in the manifest without being
+stripped.
