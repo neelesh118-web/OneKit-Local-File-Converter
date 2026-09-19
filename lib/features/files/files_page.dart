@@ -116,6 +116,10 @@ class _FilesPageState extends State<FilesPage> {
     await _load();
   }
 
+  bool get _allSelectedArePdf =>
+      _selected.isNotEmpty &&
+      _selected.every((path) => p.extension(path).toLowerCase() == '.pdf');
+
   Future<void> _shareSelected() async {
     if (_selected.isEmpty) return;
     await SharePlus.instance.share(
@@ -142,6 +146,13 @@ class _FilesPageState extends State<FilesPage> {
           onBack: selecting ? () => setState(_selected.clear) : null,
           actions: [
             if (selecting) ...[
+              // Several PDFs selected is the natural way to ask for a merge.
+              if (_allSelectedArePdf)
+                IconButton(
+                  tooltip: 'PDF tools',
+                  onPressed: () => context.push('/pdf-tools', extra: _selected.toList()),
+                  icon: const Icon(Icons.picture_as_pdf_rounded),
+                ),
               IconButton(onPressed: _shareSelected, icon: const Icon(Icons.ios_share_rounded)),
               IconButton(onPressed: _deleteSelected, icon: const Icon(Icons.delete_outline_rounded)),
             ] else
@@ -267,6 +278,19 @@ class _FilesPageState extends State<FilesPage> {
                 SharePlus.instance.share(ShareParams(files: [XFile(file.path)]));
               },
             ),
+            if (format?.ext == 'pdf')
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf_rounded),
+                title: const Text('PDF tools'),
+                subtitle: Text(
+                  'Merge, split, rotate or compress',
+                  style: TextStyle(fontSize: 12.5, color: context.tokens.textFaint),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/pdf-tools', extra: [file.path]);
+                },
+              ),
             if (format != null)
               ListTile(
                 leading: const Icon(Icons.autorenew_rounded),

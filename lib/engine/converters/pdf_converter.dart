@@ -9,6 +9,8 @@ import 'package:pdfrx/pdfrx.dart';
 
 import '../format.dart';
 import '../job.dart';
+import '../pdf/page_range.dart';
+import '../pdf/pdf_toolbox.dart' show openPdfDocument;
 import 'converter.dart';
 import 'data_converter.dart';
 import 'document_converter.dart';
@@ -126,7 +128,7 @@ class PdfConverter extends FileConverter {
   Future<void> _pdfToImages(ConvertRequest r) async {
     final doc = await _open(r.inputPath);
     try {
-      final pages = _selectPages(doc.pages.length, r.options.pdfPageRange);
+      final pages = parsePageRange(r.options.pdfPageRange, doc.pages.length);
       if (pages.isEmpty) {
         throw ConversionException('That page range does not match any page in this PDF.');
       }
@@ -235,7 +237,7 @@ class PdfConverter extends FileConverter {
   Future<void> _pdfToText(ConvertRequest r) async {
     final doc = await _open(r.inputPath);
     try {
-      final pages = _selectPages(doc.pages.length, r.options.pdfPageRange);
+      final pages = parsePageRange(r.options.pdfPageRange, doc.pages.length);
       final blocks = <DocBlock>[];
       final rows = <Map<String, dynamic>>[];
 
@@ -275,41 +277,7 @@ class PdfConverter extends FileConverter {
     }
   }
 
-  static Future<PdfDocument> _open(String path) async {
-    try {
-      // pdfrx 2.x requires an explicit init before the first document is
-      // opened; it is idempotent and cheap on later calls.
-      await pdfrxFlutterInitialize();
-      return await PdfDocument.openFile(path);
-    } catch (e) {
-      throw ConversionException(
-        'This PDF could not be opened. It may be corrupt or password protected.',
-        detail: '$e',
-      );
-    }
-  }
-
-  /// Parses a 1-based page range such as "1-3,7,10-". Null selects everything.
-  static List<int> _selectPages(int total, String? range) {
-    if (range == null || range.trim().isEmpty) {
-      return [for (var i = 1; i <= total; i++) i];
-    }
-    final out = <int>{};
-    for (final part in range.split(',')) {
-      final s = part.trim();
-      if (s.isEmpty) continue;
-      final m = RegExp(r'^(\d*)\s*-\s*(\d*)$').firstMatch(s);
-      if (m != null) {
-        final start = int.tryParse(m.group(1)!) ?? 1;
-        final end = int.tryParse(m.group(2)!) ?? total;
-        for (var i = start; i <= end && i <= total; i++) {
-          if (i >= 1) out.add(i);
-        }
-      } else {
-        final n = int.tryParse(s);
-        if (n != null && n >= 1 && n <= total) out.add(n);
-      }
-    }
-    return out.toList()..sort();
-  }
+  /// The page range is parsed by the same code the PDF toolbox uses, so "1-3"
+  /// cannot mean one thing here and another in Split.
+  static Future<PdfDocument> _open(String path) => openPdfDocument(path);
 }
