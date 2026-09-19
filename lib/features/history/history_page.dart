@@ -7,11 +7,13 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/ads/ads.dart';
 import '../../core/data/history_store.dart';
+import '../../core/diagnostics/diagnostics.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/brand.dart';
 import '../../core/widgets/common.dart';
 import '../../engine/job.dart';
 import '../../engine/registry.dart';
+import '../feedback/feedback_page.dart';
 
 /// Every conversion this device has run, with the numbers that make the app
 /// feel accountable: how long it took and how much space it saved.
@@ -206,10 +208,36 @@ class _EntryRow extends StatelessWidget {
                 Navigator.pop(ctx);
                 final target = FormatRegistry.byExt(entry.toExt);
                 if (target != null) {
-                  context.push('/pairs?q=${entry.fromExt}>${entry.toExt}');
+                  // An optimized entry has no pair to re-run — the catalogue has
+                  // no self-pairs — so it offers what that format can become.
+                  context.push(entry.fromExt == entry.toExt
+                      ? '/pairs?q=${entry.fromExt}'
+                      : '/pairs?q=${entry.fromExt}>${entry.toExt}');
                 }
               },
             ),
+            if (!entry.succeeded)
+              // The failure the user is looking at may be days old, which is
+              // exactly why its engine output is kept in the row rather than
+              // only on the job in memory.
+              ListTile(
+                leading: const Icon(Icons.bug_report_outlined),
+                title: const Text('Send a report'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push(
+                    '/feedback',
+                    extra: FeedbackArgs(
+                      failure: FailureRecord.fromEntry(entry),
+                      symptoms: {
+                        'Conversion': entry.pairLabel,
+                        'File': entry.name,
+                        'When': _ago(entry.createdAt),
+                      },
+                    ),
+                  );
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.delete_outline_rounded),
               title: const Text('Remove from history'),
