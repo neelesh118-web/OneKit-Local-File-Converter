@@ -402,7 +402,9 @@ class FfmpegConverter extends FileConverter {
       if (r.from.family == Family.video) {
         if (r.to.ext == 'gif' || r.to.ext == 'apng' || r.to.ext == 'webp') {
           // Animated targets keep the motion; everything else takes one frame.
-          args.addAll(['-vf', '${_scaleFilter(o)},fps=${o.fps ?? 12}']);
+          // GIF requires even dimensions; the others tolerate odd ones but the
+          // cost of enforcing even dimensions for all three is negligible.
+          args.addAll(['-vf', '${_scaleFilter(o, forceEven: true)},fps=${o.fps ?? 12}']);
           if (r.to.ext == 'gif') args.addAll(['-loop', '0']);
         } else {
           args.addAll(['-frames:v', '1', '-vf', _scaleFilter(o)]);
