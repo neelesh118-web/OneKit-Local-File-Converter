@@ -28,6 +28,71 @@ void main() {
     await tester.pump();
   }
 
+  /// Opens [sheet] as a modal, picks [chip], then the "Auto" chip in that same
+  /// row, applies, and returns what the sheet handed back.
+  ///
+  /// Scoped to the row on purpose: wherever a sheet shows both controls of a
+  /// family it has two "Auto" chips, and the one that clears the setting is the
+  /// one sharing a row with the value that was just chosen. [alsoPick] is chosen
+  /// first, in another row, and is expected to survive.
+  Future<ConvertOptions> pickThenAuto(
+    WidgetTester tester,
+    Widget sheet,
+    String chip, {
+    String? alsoPick,
+  }) async {
+    ConvertOptions? applied;
+    tester.view.physicalSize = const Size(1200, 2600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                onPressed: () async {
+                  applied = await showModalBottomSheet<ConvertOptions>(
+                    context: context,
+                    builder: (_) => sheet,
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    if (alsoPick != null) {
+      await tester.tap(find.text(alsoPick));
+      await tester.pump();
+    }
+    await tester.tap(find.text(chip));
+    await tester.pump();
+    await tester.tap(
+      find.descendant(
+        of: find.ancestor(of: find.text(chip), matching: find.byType(Wrap)),
+        matching: find.text('Auto'),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Apply'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(applied, isNotNull, reason: 'Apply has to hand the settings back');
+    return applied!;
+  }
+
   group('batch sheet', () {
     testWidgets('covers every format in the queue', (tester) async {
       await pump(
@@ -253,6 +318,107 @@ void main() {
       expect(find.text('PNG options'), findsOneWidget);
       expect(find.text('Pages'), findsOneWidget);
       expect(find.text('Render density'), findsOneWidget);
+    });
+  });
+
+  group('returning a control to Auto', () {
+    // "Auto" is a chip like any other, and the value behind it is null — so
+    // picking it has to unset the field. A copyWith that reads `value ?? this`
+    // cannot express that, and the chip then does nothing at all once anything
+    // else in its row has been chosen.
+    Widget audioSheet() => OptionsSheet(
+          source: fmt('wav'),
+          target: fmt('mp3'),
+          options: const ConvertOptions(),
+        );
+    Widget videoSheet() => OptionsSheet(
+          source: fmt('mp4'),
+          target: fmt('mkv'),
+          options: const ConvertOptions(),
+        );
+
+    testWidgets('bitrate', (tester) async {
+      final applied = await pickThenAuto(tester, audioSheet(), '128');
+      expect(applied.audioBitrateKbps, isNull, reason: 'Auto means unset, not 128');
+    });
+
+    testWidgets('sample rate', (tester) async {
+      final applied = await pickThenAuto(tester, audioSheet(), '48k');
+      expect(applied.sampleRate, isNull, reason: 'Auto is a choice, and it is not 48k');
+    });
+
+    testWidgets('video quality', (tester) async {
+      final applied = await pickThenAuto(tester, videoSheet(), 'Small');
+      expect(applied.videoCrf, isNull, reason: 'the CRF is not 28 once Auto is picked');
+    });
+
+    testWidgets('frame rate', (tester) async {
+      final applied = await pickThenAuto(tester, videoSheet(), '60');
+      expect(applied.fps, isNull, reason: 'the frame rate is not 60 once Auto is picked');
+    });
+
+    testWidgets('clearing one control leaves its neighbour alone', (tester) async {
+      final applied = await pickThenAuto(tester, audioSheet(), '128', alsoPick: '48k');
+      expect(applied.audioBitrateKbps, isNull);
+      expect(applied.sampleRate, 48000, reason: 'a cleared bitrate is not a cleared sample rate');
+    });
+  });
+
+  group('ConvertOptions.copyWith', () {
+    // The sheet's controls all go through this, so its two rules are worth
+    // pinning down where they can be read at a glance: an argument left out
+    // keeps the field, and an explicit null clears it.
+    const full = ConvertOptions(
+      quality: 70,
+      width: 1600,
+      height: 900,
+      audioBitrateKbps: 192,
+      sampleRate: 44100,
+      videoCrf: 23,
+      fps: 30,
+      stripMetadata: true,
+      pdfPageRange: '1-3',
+      pdfDpi: 300,
+      maxEdge: 2400,
+    );
+
+    test('carries over every field it was not given', () {
+      final changed = full.copyWith(quality: 50);
+      expect(changed.quality, 50);
+      expect(changed.width, 1600);
+      expect(changed.height, 900);
+      expect(changed.audioBitrateKbps, 192);
+      expect(changed.sampleRate, 44100);
+      expect(changed.videoCrf, 23);
+      expect(changed.fps, 30);
+      expect(changed.stripMetadata, isTrue);
+      expect(changed.pdfPageRange, '1-3');
+      expect(changed.pdfDpi, 300);
+      expect(changed.maxEdge, 2400);
+    });
+
+    test('clears the fields it is given an explicit null for', () {
+      final cleared = full.copyWith(
+        width: null,
+        height: null,
+        audioBitrateKbps: null,
+        sampleRate: null,
+        videoCrf: null,
+        fps: null,
+        pdfPageRange: null,
+        maxEdge: null,
+      );
+      expect(cleared.width, isNull);
+      expect(cleared.height, isNull);
+      expect(cleared.audioBitrateKbps, isNull);
+      expect(cleared.sampleRate, isNull);
+      expect(cleared.videoCrf, isNull);
+      expect(cleared.fps, isNull);
+      expect(cleared.pdfPageRange, isNull);
+      expect(cleared.maxEdge, isNull);
+      expect(cleared.quality, 70, reason: 'a field that was not mentioned is untouched');
+      expect(cleared.stripMetadata, isTrue);
+      expect(cleared.pdfDpi, 300);
     });
   });
 }

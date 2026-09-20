@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../core/media/media_export.dart';
 import 'converters/archive_converter.dart';
 import 'converters/converter.dart';
 import 'converters/data_converter.dart';
@@ -77,11 +78,17 @@ class ConversionEngine {
   ///
   /// Returns normally on success and leaves the reason on [job.error] on
   /// failure; it does not rethrow, so a batch never dies on one bad file.
+  ///
+  /// When [publishToGallery] is set, a successful result is also copied into the
+  /// phone's own storage, so the app's private folder is not the only place it
+  /// exists. That copy is best effort and is never a reason to call the
+  /// conversion a failure.
   Future<void> run(
     ConversionJob job, {
     required CancelToken cancel,
     void Function()? onUpdate,
     String? outputDirectory,
+    bool publishToGallery = true,
   }) async {
     final started = DateTime.now();
     String? reservedOutputPath;
@@ -185,6 +192,18 @@ class ConversionEngine {
       job.progress = 1.0;
       job.indeterminate = false;
       job.status = JobStatus.done;
+
+      // Awaited rather than left running, because the result screen reports
+      // where the copy went and must not say so before it exists. It cannot
+      // fail the job: the conversion has already been written and is about to
+      // be shown, whether or not a second copy of it can be made.
+      if (publishToGallery) {
+        try {
+          await _publish(job, extras);
+        } catch (_) {
+          job.publishProblem = MediaExportReason.failed.message;
+        }
+      }
     } on ConversionException catch (e) {
       job.status = cancel.isCancelled ? JobStatus.cancelled : JobStatus.failed;
       job.error = cancel.isCancelled ? 'Cancelled' : e.message;
@@ -209,6 +228,35 @@ class ConversionEngine {
       job.elapsed = DateTime.now().difference(started);
       onUpdate?.call();
     }
+  }
+
+  /// Copies what was just written into the phone's own storage, so it is where
+  /// its gallery, music app or file manager looks for it rather than only
+  /// inside OneKit. Records the outcome on [job] for the result screen; a copy
+  /// that did not happen is a note there, never a failure.
+  static Future<void> _publish(ConversionJob job, List<String> extras) async {
+    final target = job.target;
+    final paths = <String>[
+      if (job.outputPath != null) job.outputPath!,
+      ...extras,
+    ];
+    String? location;
+    String? problem;
+    for (final path in paths) {
+      final result = await MediaExport.instance.publish(
+        path: path,
+        name: p.basename(path),
+        family: target.family,
+        mime: target.mime,
+      );
+      if (result.saved) {
+        location ??= result.location;
+      } else {
+        problem ??= result.reason?.message;
+      }
+    }
+    job.publishedTo = location;
+    job.publishProblem = problem;
   }
 
   /// Where finished files land by default. Kept inside app storage so no

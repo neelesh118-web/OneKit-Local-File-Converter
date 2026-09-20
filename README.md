@@ -72,6 +72,14 @@ refuses at run time to label a face with the wrong outline format.
   failed one at a time.
 - **Bulk ZIP** — drop in a ZIP and the app converts everything inside it, then
   packs the results back into a ZIP.
+- **Whole folder** — pick a folder in Android's own picker and everything
+  inside it that this build can read is queued, subfolders included. This adds
+  **no permission** either: the user lends the app that one folder, and the app
+  copies what is in it into its own scratch space, where "Clear working files"
+  reaches it. What is *not* copied is as deliberate as what is — a camera
+  folder holds thumbnails, `.nomedia` markers and databases beside the photos,
+  and only the extensions the app can actually convert are taken, with the rest
+  counted and reported rather than copied in and then refused.
 - **PDF tools** — merge any number of PDFs, split one by page range or into
   single pages, rotate the pages you name, and compress. The first three are
   pdfium container work: pages are imported, rotated and deleted whole, so
@@ -87,6 +95,21 @@ refuses at run time to label a face with the wrong outline format.
   it. The report is a plain-text file handed to your share sheet; the app never
   posts it anywhere. File names travel with it; the folder paths an engine log
   mentions are trimmed back to the file name first.
+- **Keeps going when you leave** — a long video, a forty-file batch or a
+  hundred-page PDF render carries on after you switch to another app, which
+  Android is otherwise free to kill mid-run. A progress notification says what
+  is running and how far along it is, and a second one says what came out, so a
+  run that finishes while you were elsewhere does not go unnoticed. Nothing
+  depends on the notification: decline it and the conversion still runs.
+- **Results where you can find them** — a conversion is written into the app's
+  own folder, which is the only place it may write without a permission, and
+  which no other app on the phone lists. So a finished result is also copied
+  into your Gallery — or into `Download/OneKit` for documents, data, archives
+  and anything else a gallery would not show — through Android's own media
+  store, which needs no permission either. It is a copy, not a move: Files,
+  history and share-out all still work off the original. The result card says
+  where the copy went, or why there is not one, and Settings can turn the copy
+  off entirely.
 - **Files** — a file manager over the output folder: search, sort, multi-select,
   share, delete, or re-convert.
 - **Per-format options** — quality, resize, bitrate, sample rate, CRF, frame
@@ -156,10 +179,23 @@ lib/
     pdf_toolbox.dart        the pdfium calls that carry the plan out
   core/       theme, widgets (starfield, pulse, brand), ads, storage
               share/  the Dart side of the Android share intake
+              folder/  the Dart side of picking a whole folder: the extension
+                       contract with the platform, and how every way the pick
+                       can come back is read
+              media/  the Dart side of the MediaStore copy: which collection a
+                      format belongs in, and what the app says when there is
+                      no copy to point at
+              background/  the progress notification and the foreground
+                      service behind it, with the throttle that keeps a
+                      progress tick from becoming a system call per frame
               diagnostics/  the failure report: what the device is, what the
                             engine said, and a preview of every word of it
   android/    MainActivity.kt handles SEND / SEND_MULTIPLE / VIEW, copies the
-              shared file into the scratch space and hands Dart a path
+              shared file into the scratch space and hands Dart a path.
+              ConversionService.kt holds the process up while a run is going
+              and owns the notification; MediaStoreChannel.kt writes the
+              Gallery copy; FolderChannel.kt owns the folder picker and walks
+              the tree the user lent the app
   features/   home, convert, batch, pdf_tools, history, files, settings, about
 ```
 
@@ -266,8 +302,23 @@ the whole app is AdMob. History and settings live in app-private storage.
 
 The app requests no storage permission, including for sharing: a file handed
 over by another app arrives as a URI with a read grant for OneKit alone. Files
-reach the app by the user picking them, sharing them, or handing them over with
-"Open with" — never by scanning the device.
+reach the app by the user picking them, sharing them, handing them over with
+"Open with", or lending it a whole folder through Android's own folder picker —
+never by scanning the device. That folder grant reaches the one tree the user
+chose and nothing else, and what is read out of it is copied into the same
+working directory the share intake and Settings' "Clear working files" use. The copy that makes a result
+visible to the phone's own apps needs no permission either: Android 10 and
+above let an app put a file into the media store on its own behalf, so the
+Gallery copy adds nothing to the permission list. That copy is the only
+thing this app writes anywhere but its own folder, it is made on the device,
+and Settings turns it off.
+
+One permission is asked for at run time: notifications, which from Android 13
+on is what lets a conversion that is still running say so while the app is off
+screen. Declining it costs only that — the run continues, finishes, and is
+waiting in Files — and the service that keeps the process alive is the app's
+own: not exported, not bound by anything else, and stopped the moment the run
+is over.
 
 Nothing about a failure leaves the app on its own either. "Send a report"
 writes the plain-text report into the same working directory Settings clears and

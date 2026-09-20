@@ -98,22 +98,16 @@ class _OptionsSheetState extends State<OptionsSheet> {
 
   /// The settings as they stand, including cleared fields.
   ///
-  /// Built field by field rather than with `copyWith`, which cannot clear one:
-  /// a resize box the user emptied has to mean no resize, not the last number
-  /// that was typed in it — and a recipe that is saved has to be the recipe that
-  /// runs.
-  ConvertOptions get _current => ConvertOptions(
-        quality: _o.quality,
+  /// The three controls that are typed rather than tapped are overlaid onto the
+  /// options here: a resize box the user emptied has to mean no resize, not the
+  /// last number that was typed in it, and a recipe that is saved has to be the
+  /// recipe that runs. `copyWith` takes an explicit `null` as a cleared field,
+  /// so every other field is carried over rather than restated — a setting added
+  /// later cannot be silently dropped by being forgotten here.
+  ConvertOptions get _current => _o.copyWith(
         width: int.tryParse(_width.text.trim()),
         height: int.tryParse(_height.text.trim()),
-        audioBitrateKbps: _o.audioBitrateKbps,
-        sampleRate: _o.sampleRate,
-        videoCrf: _o.videoCrf,
-        fps: _o.fps,
-        stripMetadata: _o.stripMetadata,
         pdfPageRange: _pages.text.trim().isEmpty ? null : _pages.text.trim(),
-        pdfDpi: _o.pdfDpi,
-        maxEdge: _o.maxEdge,
       );
 
   void _apply() => Navigator.pop(context, _current);
@@ -195,12 +189,7 @@ class _OptionsSheetState extends State<OptionsSheet> {
                     values: const [null, 96, 128, 192, 256, 320],
                     current: _o.audioBitrateKbps,
                     labelOf: (v) => v == null ? 'Auto' : '$v',
-                    onPick: (v) => setState(() => _o = ConvertOptions(
-                          quality: _o.quality,
-                          audioBitrateKbps: v,
-                          sampleRate: _o.sampleRate,
-                          stripMetadata: _o.stripMetadata,
-                        )),
+                    onPick: (v) => setState(() => _o = _o.copyWith(audioBitrateKbps: v)),
                   ),
                   const SizedBox(height: 16),
                   _label('Sample rate', _o.sampleRate == null ? 'Auto' : '${_o.sampleRate} Hz'),
@@ -209,12 +198,7 @@ class _OptionsSheetState extends State<OptionsSheet> {
                     values: const [null, 22050, 44100, 48000],
                     current: _o.sampleRate,
                     labelOf: (v) => v == null ? 'Auto' : '${(v / 1000).toStringAsFixed(v % 1000 == 0 ? 0 : 1)}k',
-                    onPick: (v) => setState(() => _o = ConvertOptions(
-                          quality: _o.quality,
-                          audioBitrateKbps: _o.audioBitrateKbps,
-                          sampleRate: v,
-                          stripMetadata: _o.stripMetadata,
-                        )),
+                    onPick: (v) => setState(() => _o = _o.copyWith(sampleRate: v)),
                   ),
                   const SizedBox(height: 16),
                 ],

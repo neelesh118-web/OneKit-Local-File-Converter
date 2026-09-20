@@ -56,6 +56,19 @@ class MainActivity : FlutterActivity() {
         // to know about them, so they live in their own file.
         DiagnosticsChannel.attach(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
 
+        // Handing a finished conversion to MediaStore so the phone's own apps
+        // can see it. Its own file, for the same reason.
+        MediaStoreChannel.attach(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+
+        // The notification that keeps a conversion running while the app is off
+        // screen. It takes the activity rather than the application context
+        // because asking for the notification permission is the activity's job.
+        ConversionServiceChannel.attach(this, flutterEngine.dartExecutor.binaryMessenger)
+
+        // Converting a whole folder. Also takes the activity: the folder picker
+        // is a screen it has to be launched from.
+        FolderChannel.attach(this, flutterEngine.dartExecutor.binaryMessenger)
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, METHOD_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -85,6 +98,20 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         collect(intent)
+    }
+
+    /**
+     * The folder picker's answer.
+     *
+     * Claimed here rather than by a plugin because this is the activity that
+     * launched it; anything with another request code still goes to the
+     * embedding, which is what every plugin here expects.
+     */
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!FolderChannel.onActivityResult(this, requestCode, resultCode, data)) {
+            super.onActivityResult(requestCode, resultCode, data)
+        }
     }
 
     /**

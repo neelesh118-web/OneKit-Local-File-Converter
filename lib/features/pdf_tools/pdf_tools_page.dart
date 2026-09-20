@@ -9,14 +9,17 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/ads/ads.dart';
+import '../../core/background/background_task.dart';
 import '../../core/data/history_store.dart';
 import '../../core/data/settings_store.dart';
+import '../../core/media/media_export.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/brand.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/pulse.dart';
 import '../../engine/converters/converter.dart';
 import '../../engine/engine.dart';
+import '../../engine/format.dart';
 import '../../engine/job.dart';
 import '../../engine/pdf/pdf_plan.dart';
 import '../../engine/pdf/pdf_toolbox.dart';
@@ -65,6 +68,12 @@ class _PdfToolsPageState extends State<PdfToolsPage> {
   PdfPlan? _plan;
   PdfToolResult? _result;
   String? _error;
+
+  /// Where the toolbox's output was also copied, and why it was not when it was
+  /// not. Read only by [_resultPanel], and cleared at the start of every run so
+  /// a previous answer cannot appear beside a new result.
+  String? _publishedTo;
+  String? _publishProblem;
 
   @override
   void initState() {
@@ -196,6 +205,8 @@ class _PdfToolsPageState extends State<PdfToolsPage> {
       _plan = plan;
       _result = null;
       _error = null;
+      _publishedTo = null;
+      _publishProblem = null;
       // pdfium imports and saves in one call each, so a single-output job has
       // nothing honest to show between "started" and "written".
       _indeterminate = plan.outputs.length == 1;
@@ -206,6 +217,10 @@ class _PdfToolsPageState extends State<PdfToolsPage> {
     PdfToolResult? result;
     Object? failure;
     final started = DateTime.now();
+    // A hundred-page render is exactly the job that has to survive the user
+    // switching apps, so the notification is up before pdfium is asked to do
+    // anything.
+    await BackgroundTask.instance.begin(plan.tool.working);
     try {
       final dir = settings.outputDir ?? (await ConversionEngine.outputDir()).path;
       result = await PdfToolbox.run(
@@ -214,19 +229,49 @@ class _PdfToolsPageState extends State<PdfToolsPage> {
         cancel: cancel,
         onProgress: (value) {
           if (mounted) _progress.value = value;
+          // pdfium imports and saves in one call each, so a single-output job
+          // has no honest fraction to show: the notification spins rather than
+          // naming a number nobody measured.
+          BackgroundTask.instance.report(value, indeterminate: _indeterminate);
         },
       );
     } catch (e) {
       failure = e;
     }
 
+    // Ended before the mounted check below, and whatever the outcome: a
+    // foreground service left up is a notification the user cannot clear.
+    //
+    // A run the user cancelled says nothing: they are the one who stopped it,
+    // and a notification telling them so is news they already have. Anything
+    // else that ended without a result gets one, so a run that died while the
+    // screen was elsewhere does not pass unnoticed.
+    final cancelled =
+        failure is ConversionException && failure.message == 'Cancelled';
+    await BackgroundTask.instance.end(
+      notice: result != null
+          ? _noticeFor(plan, result)
+          : (cancelled ? null : '${plan.tool.working} stopped before it finished'),
+    );
+
     if (!mounted) return;
+
+    // Copied before the panel is built, so the result and the note about where
+    // its copy went are shown together rather than a frame apart. Nothing here
+    // can turn a PDF that was written into a failure.
+    if (result != null && settings.saveToGallery) {
+      await _publish(result.outputs);
+    }
+
     setState(() {
       _busy = false;
       _indeterminate = false;
       _cancel = null;
       _result = result;
-      if (failure != null) {
+      // A cancel is not a failure: nothing went wrong, the user changed their
+      // mind. Leaving it out of the error panel keeps the app from putting a
+      // warning sign on a decision someone made on purpose.
+      if (failure != null && !cancelled) {
         _error = failure is ConversionException
             ? failure.message
             : 'The PDF could not be written.';
@@ -246,7 +291,10 @@ class _PdfToolsPageState extends State<PdfToolsPage> {
     } else if (failure != null) {
       // A failed run is written down too, with the engine's own account of why.
       // It is what the report screen reads back, and without it a merge that
-      // dies half way through would leave no trace anywhere in the app.
+      // dies half way through would leave no trace anywhere in the app. A run
+      // the user stopped is written down as cancelled rather than failed, the
+      // same way a cancelled conversion is, so the failure screen is not handed
+      // a failure they caused on purpose.
       var sourceBytes = 0;
       for (final source in _sources) {
         try {
@@ -258,7 +306,7 @@ class _PdfToolsPageState extends State<PdfToolsPage> {
       await HistoryStore.instance.recordTool(
         tool: plan.tool,
         name: _sources.isEmpty ? 'document.pdf' : _sources.first.name,
-        status: JobStatus.failed,
+        status: cancelled ? JobStatus.cancelled : JobStatus.failed,
         elapsed: DateTime.now().difference(started),
         sourceBytes: sourceBytes,
         outputBytes: 0,
@@ -701,6 +749,42 @@ class _PdfToolsPageState extends State<PdfToolsPage> {
     );
   }
 
+  /// What the finished-run notification says. The tool's own past-tense label,
+  /// because it describes a job that is now over, plus what came out of it — a
+  /// run the user did not watch should read the same way as one they did.
+  static String _noticeFor(PdfPlan plan, PdfToolResult result) {
+    final names = result.outputs.length == 1
+        ? p.basename(result.outputs.first)
+        : '${result.outputs.length} files';
+    return '${plan.tool.label} · $names';
+  }
+
+  /// Copies the toolbox's outputs into the phone's own storage, the same way a
+  /// conversion's result is copied — a merged PDF belongs in Downloads, where
+  /// the phone's own apps look for it, not only inside OneKit.
+  ///
+  /// Sets the fields the panel reads instead of calling `setState`: the caller
+  /// rebuilds immediately afterwards, so the note appears with the result.
+  Future<void> _publish(List<String> outputs) async {
+    String? location;
+    String? problem;
+    for (final path in outputs) {
+      final result = await MediaExport.instance.publish(
+        path: path,
+        name: p.basename(path),
+        family: Family.document,
+        mime: 'application/pdf',
+      );
+      if (result.saved) {
+        location ??= result.location;
+      } else {
+        problem ??= result.reason?.message;
+      }
+    }
+    _publishedTo = location;
+    _publishProblem = problem;
+  }
+
   Widget _resultPanel(PdfToolResult result) {
     final t = context.tokens;
     final plan = _plan;
@@ -771,6 +855,28 @@ class _PdfToolsPageState extends State<PdfToolsPage> {
             Text(
               'This file was already about as small as it gets. Rasterising it is the '
               'option that really shrinks a page-image document.',
+              style: TextStyle(fontSize: 12, height: 1.4, color: t.textFaint),
+            ),
+          ],
+          if (_publishedTo != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.photo_library_outlined, size: 16, color: t.textFaint),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Also copied to $_publishedTo, so other apps can find it.',
+                    style: TextStyle(fontSize: 12, height: 1.4, color: t.textFaint),
+                  ),
+                ),
+              ],
+            ),
+          ] else if (_publishProblem != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _publishProblem!,
               style: TextStyle(fontSize: 12, height: 1.4, color: t.textFaint),
             ),
           ],

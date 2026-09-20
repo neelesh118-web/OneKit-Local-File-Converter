@@ -14,8 +14,20 @@ banner, provided by Google AdMob.
 ## What the app does with your files
 
 When you pick a file, the app reads it, converts it on your device, and writes
-the result to the app's own private storage folder. That is the whole
-lifecycle.
+the result into its own private storage folder. So that a converted file is
+findable outside the app, a copy is also placed in your phone's own Gallery —
+or in **Download/OneKit** for documents and other files a gallery would not
+show — where your other apps can see it. Both copies are on your device:
+nothing is uploaded, and neither is shared with us or anyone else.
+**Settings → Save to Gallery** turns the copy off; with it off, results stay
+inside the app's private folder and leave only through a share sheet you
+choose.
+
+Files you hand to the app — shared in from another app, or read out of a folder
+you pick — are first copied into that same working storage, because the
+converters work on files rather than on Android's `content://` addresses.
+**Settings → Clear working files** erases those copies and everything else the
+app kept while working.
 
 - Your files are **not uploaded** anywhere.
 - Your files are **not shared** with us or any third party.
@@ -54,10 +66,16 @@ you can delete or reset your advertising ID and opt out of ad personalisation.
 | `ACCESS_NETWORK_STATE` | Required by the Google Mobile Ads SDK. |
 | `AD_ID` | Required by AdMob on Android 13 and above. |
 | `WAKE_LOCK` | Keeps long video and batch conversions running while the app is open. |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC` | Let a running conversion continue when you switch to another app instead of being killed in the background. |
+| `POST_NOTIFICATIONS` | Shows that run's progress, and says when it has finished. Asked for when the first conversion starts; declining it costs only the notification, and the conversion still runs. |
 
 The app does **not** request storage permission. Files reach the app only
-through Android's own file picker, which means you choose each file
-explicitly, and results are shared out through Android's share sheet.
+through Android's own pickers — one file at a time, or a single folder you lend
+the app through the system's folder picker, which grants access to that one
+folder and nothing else — so you choose explicitly what it may read, and results
+are shared out through Android's share sheet. The Gallery copy uses Android's
+own media store, which needs no permission on Android 10 and above; on older
+versions it is not written, and the result stays in the app's private folder.
 
 ## Diagnostics and reports
 

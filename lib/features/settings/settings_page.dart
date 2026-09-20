@@ -146,6 +146,18 @@ class _SettingsPageState extends State<SettingsPage> {
                       onTap: () => _pickOutputDir(settings),
                     ),
                     Divider(color: t.border, height: 4, indent: 16, endIndent: 16),
+                    SwitchListTile.adaptive(
+                      value: settings.saveToGallery,
+                      onChanged: settings.setSaveToGallery,
+                      secondary: const Icon(Icons.photo_library_outlined),
+                      title: const Text('Save to Gallery'),
+                      subtitle: Text(
+                        'Copy each result into your Gallery, or Download/OneKit for '
+                        'documents, so other apps can find it. Needs Android 10 or newer.',
+                        style: TextStyle(fontSize: 12.5, color: t.textFaint),
+                      ),
+                    ),
+                    Divider(color: t.border, height: 4, indent: 16, endIndent: 16),
                     ListTile(
                       leading: const Icon(Icons.cleaning_services_outlined),
                       title: const Text('Clear working files'),

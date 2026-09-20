@@ -8,6 +8,10 @@ import 'registry.dart';
 
 enum JobStatus { queued, running, done, failed, cancelled }
 
+/// Marks an argument that was not passed to [ConvertOptions.copyWith], so that
+/// "leave this field alone" and "clear this field" are two different things.
+const Object _unchanged = Object();
+
 /// Options a user can tune before converting. Only the fields relevant to the
 /// chosen target are surfaced in the UI.
 class ConvertOptions {
@@ -71,31 +75,41 @@ class ConvertOptions {
     return parts.isEmpty ? 'defaults' : parts.join(', ');
   }
 
+  /// The same options with some of them replaced.
+  ///
+  /// The nullable fields take an [Object] so that both "leave this alone" and
+  /// "clear this" can be said. `null` is how a caller spells a cleared field —
+  /// the options sheet offers it as the "Auto" chip, and picking that back has
+  /// to mean the setting is unset again — so it cannot also mean the argument
+  /// was not passed. Leaving an argument out keeps the field as it was; passing
+  /// `null` clears it.
   ConvertOptions copyWith({
     int? quality,
-    int? width,
-    int? height,
-    int? audioBitrateKbps,
-    int? sampleRate,
-    int? videoCrf,
-    int? fps,
+    Object? width = _unchanged,
+    Object? height = _unchanged,
+    Object? audioBitrateKbps = _unchanged,
+    Object? sampleRate = _unchanged,
+    Object? videoCrf = _unchanged,
+    Object? fps = _unchanged,
     bool? stripMetadata,
-    String? pdfPageRange,
+    Object? pdfPageRange = _unchanged,
     int? pdfDpi,
-    int? maxEdge,
+    Object? maxEdge = _unchanged,
   }) {
+    T? pick<T>(Object? given, T? current) =>
+        identical(given, _unchanged) ? current : given as T?;
     return ConvertOptions(
       quality: quality ?? this.quality,
-      width: width ?? this.width,
-      height: height ?? this.height,
-      audioBitrateKbps: audioBitrateKbps ?? this.audioBitrateKbps,
-      sampleRate: sampleRate ?? this.sampleRate,
-      videoCrf: videoCrf ?? this.videoCrf,
-      fps: fps ?? this.fps,
+      width: pick<int>(width, this.width),
+      height: pick<int>(height, this.height),
+      audioBitrateKbps: pick<int>(audioBitrateKbps, this.audioBitrateKbps),
+      sampleRate: pick<int>(sampleRate, this.sampleRate),
+      videoCrf: pick<int>(videoCrf, this.videoCrf),
+      fps: pick<int>(fps, this.fps),
       stripMetadata: stripMetadata ?? this.stripMetadata,
-      pdfPageRange: pdfPageRange ?? this.pdfPageRange,
+      pdfPageRange: pick<String>(pdfPageRange, this.pdfPageRange),
       pdfDpi: pdfDpi ?? this.pdfDpi,
-      maxEdge: maxEdge ?? this.maxEdge,
+      maxEdge: pick<int>(maxEdge, this.maxEdge),
     );
   }
 }
@@ -151,6 +165,17 @@ class ConversionJob {
   /// Additional files produced alongside [outputPath] — a multi-page PDF
   /// rendered to images is the main case.
   List<String> extraOutputs = const [];
+
+  /// The public folder this result was also copied into, e.g. `Pictures/OneKit`,
+  /// or null when it exists only inside the app's own folder.
+  ///
+  /// A copy, not a move: [outputPath] stays the file the app itself uses.
+  String? publishedTo;
+
+  /// Why no copy was made, in the app's own words. Null when there is one, or
+  /// when a copy was never asked for. It is never a reason to call the
+  /// conversion a failure — the result was written either way.
+  String? publishProblem;
 
   String? error;
 

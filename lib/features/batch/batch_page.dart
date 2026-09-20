@@ -12,9 +12,11 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/ads/ads.dart';
+import '../../core/background/background_task.dart';
 import '../../core/data/history_store.dart';
 import '../../core/data/preset_store.dart';
 import '../../core/data/settings_store.dart';
+import '../../core/folder/folder_intake.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/file_preview.dart';
@@ -62,8 +64,26 @@ class _BatchPageState extends State<BatchPage> {
   /// "current" file to point at, so the queue reports completions instead.
   int _completed = 0;
 
+  /// Where the queue's results were also copied, once the first one lands. One
+  /// line for the whole run rather than a note per row: in a queue of forty the
+  /// folder is the same for every file in it.
+  String? _publishedTo;
+
   /// Temp directory holding files extracted from a ZIP, cleaned up on dispose.
   Directory? _extracted;
+
+  /// Folders copied out of a tree the user picked. Cleared the same way an
+  /// unpacked ZIP is: on the way out, and never while a run might still be
+  /// reading them.
+  final List<Directory> _folderCopies = [];
+
+  /// Padding for the three-in-a-row add buttons. A phone has room for three
+  /// buttons or for one roomy one, and these are three ways in rather than
+  /// three different things to do. Only padding is set, so each keeps the
+  /// weight its own constructor gives it.
+  static const _compactButton = ButtonStyle(
+    padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 6)),
+  );
 
   @override
   void initState() {
@@ -82,6 +102,10 @@ class _BatchPageState extends State<BatchPage> {
     // unwinding. The run loop cleans them after all workers have stopped.
     if (!_running) {
       _extracted?.delete(recursive: true).catchError((_) => Directory(''));
+      for (final dir in _folderCopies) {
+        dir.delete(recursive: true).catchError((_) => Directory(''));
+      }
+      _folderCopies.clear();
     }
     super.dispose();
   }
@@ -221,6 +245,52 @@ class _BatchPageState extends State<BatchPage> {
     }
   }
 
+  /// Takes a whole folder: the user picks one, the platform copies what this
+  /// build can read out of it, and every file lands in the queue.
+  ///
+  /// The folder is chosen in Android's own picker, so the app is lent that one
+  /// tree and no storage permission is involved. The copy has to happen here
+  /// rather than at run time because what the app is lent is a tree of
+  /// `content://` URIs, and the engines open paths.
+  Future<void> _pickFolder() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final pick = await FolderIntake.instance.pick();
+    if (!mounted || pick.cancelled) return;
+
+    if (pick.failed) {
+      messenger.showSnackBar(SnackBar(content: Text(pick.problem!)));
+      return;
+    }
+
+    if (pick.files.isEmpty) {
+      // Two different nothings, and they are worth telling apart: an empty
+      // folder is the user's own doing, while a folder full of things this app
+      // cannot read is a limit of the app.
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            pick.skipped == 0
+                ? 'That folder is empty.'
+                : 'Nothing in that folder can be converted.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final root = pick.root;
+    if (root != null) _folderCopies.add(Directory(root));
+    _addPaths([for (final file in pick.files) file.path], label: pick.folder);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Added ${pick.files.length} files from ${pick.folder}'
+          '${pick.skipped == 0 ? '' : ' \u00b7 ${pick.skipped} skipped'}',
+        ),
+      ),
+    );
+  }
+
   // -------------------------------------------------------------- running
 
   Future<void> _runAll() async {
@@ -232,12 +302,14 @@ class _BatchPageState extends State<BatchPage> {
       _running = true;
       _cancel = cancel;
       _completed = 0;
+      _publishedTo = null;
       for (final i in _items) {
         i.job = null;
       }
     });
 
     final outputDir = context.read<SettingsStore>().outputDir;
+    final saveToGallery = context.read<SettingsStore>().saveToGallery;
     var succeeded = 0;
     var started = 0;
 
@@ -264,12 +336,14 @@ class _BatchPageState extends State<BatchPage> {
         job,
         cancel: cancel,
         outputDirectory: outputDir,
+        publishToGallery: saveToGallery,
         // Per-file rows and the overall dial both listen to the job's
         // notifier, so a progress tick no longer rebuilds the whole queue.
         onUpdate: _onJobTick,
       );
       await HistoryStore.instance.record(job);
       if (job.status == JobStatus.done) succeeded++;
+      _publishedTo ??= job.publishedTo;
       if (mounted) setState(() => _completed++);
       _onJobTick();
     }
@@ -289,7 +363,24 @@ class _BatchPageState extends State<BatchPage> {
       await Future.wait(workers);
     }
 
+    // One notification for the whole queue: it is a single run, and every file
+    // in it lands in the same place. Raised before the workers start so the
+    // process is already held up when the first long encode begins.
+    await BackgroundTask.instance.begin(
+      '${_optimize ? 'Optimizing' : 'Converting'} ${queue.length} '
+      'file${queue.length == 1 ? '' : 's'}',
+    );
+
     await drain(_concurrencyFor(queue, target: _optimize ? null : target));
+
+    // Ended before the mounted check below, and whatever the outcome: a
+    // foreground service left up is a notification the user cannot clear.
+    final failed = _failed.length;
+    await BackgroundTask.instance.end(
+      notice: succeeded == 0
+          ? null
+          : '$succeeded $_doneVerb${failed == 0 ? '' : ' · $failed failed'}',
+    );
 
     if (!mounted) return;
     setState(() {
@@ -314,6 +405,10 @@ class _BatchPageState extends State<BatchPage> {
   final ValueNotifier<double> _overallProgress = ValueNotifier<double>(0);
 
   void _onJobTick() {
+    // Reported even once the screen has gone: at that point the notification is
+    // the only thing still watching the run, which is the whole reason it
+    // exists. The throttle inside decides whether it is worth reposting.
+    BackgroundTask.instance.report(_overall);
     if (!mounted) return;
     _overallProgress.value = _overall;
   }
@@ -501,23 +596,38 @@ class _BatchPageState extends State<BatchPage> {
           title: 'Nothing queued',
           message: _optimize
               ? 'Add several files and each one is re-encoded into its own\nformat, at one shared quality.'
-              : 'Add several files, or drop in a ZIP and this app will\nconvert everything inside it.',
+              : 'Add several files, or pick a folder or a ZIP and this app\nwill convert everything inside it.',
         ),
+        // Three sources, one row. The labels are short and the padding tight
+        // because a phone has room for three buttons or for one wide one, and
+        // each of these is a different way in rather than a different thing to
+        // do.
         Row(
           children: [
             Expanded(
               child: FilledButton.icon(
                 onPressed: _pickFiles,
-                icon: const Icon(Icons.add_rounded, size: 20),
-                label: const Text('Add files'),
+                icon: const Icon(Icons.add_rounded, size: 17),
+                label: const Text('Files', style: TextStyle(fontSize: 12.5)),
+                style: _compactButton,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _pickFolder,
+                icon: const Icon(Icons.folder_open_rounded, size: 17),
+                label: const Text('Folder', style: TextStyle(fontSize: 12.5)),
+                style: _compactButton,
+              ),
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: _pickZip,
-                icon: const Icon(Icons.folder_zip_outlined, size: 19),
-                label: const Text('From ZIP'),
+                icon: const Icon(Icons.folder_zip_outlined, size: 17),
+                label: const Text('ZIP', style: TextStyle(fontSize: 12.5)),
+                style: _compactButton,
               ),
             ),
           ],
@@ -564,16 +674,27 @@ class _BatchPageState extends State<BatchPage> {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _pickFiles,
-                  icon: const Icon(Icons.add_rounded, size: 19),
-                  label: const Text('Add'),
+                  icon: const Icon(Icons.add_rounded, size: 17),
+                  label: const Text('Files', style: TextStyle(fontSize: 12.5)),
+                  style: _compactButton,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _pickFolder,
+                  icon: const Icon(Icons.folder_open_rounded, size: 17),
+                  label: const Text('Folder', style: TextStyle(fontSize: 12.5)),
+                  style: _compactButton,
+                ),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _pickZip,
-                  icon: const Icon(Icons.folder_zip_outlined, size: 18),
-                  label: const Text('From ZIP'),
+                  icon: const Icon(Icons.folder_zip_outlined, size: 17),
+                  label: const Text('ZIP', style: TextStyle(fontSize: 12.5)),
+                  style: _compactButton,
                 ),
               ),
             ],
@@ -704,6 +825,15 @@ class _BatchPageState extends State<BatchPage> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: t.textFaint, fontSize: 12.5, height: 1.35),
             ),
+            if (_publishedTo != null) ...[
+              const SizedBox(height: 3),
+              Text(
+                'Also copied to $_publishedTo, so other apps can find them.',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: t.textFaint, fontSize: 12.5, height: 1.35),
+              ),
+            ],
             const SizedBox(height: 16),
             Row(
               children: [
@@ -929,7 +1059,9 @@ class _Item {
   /// syscalls a second during a batch.
   final int sizeBytes;
 
-  /// Set when the file came out of a ZIP, so the source is visible in the row.
+  /// Set when the file came out of a ZIP or a folder the user picked, so where
+  /// it came from is visible in the row rather than the file looking like it was
+  /// added on its own.
   final String? label;
   ConversionJob? job;
 

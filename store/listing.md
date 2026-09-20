@@ -5,14 +5,14 @@
 ```
 100% Local File Converter
 ```
-*(29 characters)*
+*(25 characters)*
 
 ## Short description (80 chars max)
 
 ```
-Convert 5,800+ file formats offline. No upload, no account, nothing leaves you.
+Convert 148 formats 5,890 ways offline. Whole folders. No upload.
 ```
-*(78 characters)*
+*(65 characters)*
 
 ## Full description (4000 chars max)
 
@@ -52,16 +52,20 @@ Share a file to it — from the Gallery, from Files, from any share sheet or
 "Open with" — and it opens on that file ready to convert, without asking for a
 single permission. Share several at once and they land in the batch queue.
 
+Pick a whole folder — a camera roll or a Downloads folder: choose it and
+everything inside that this app can convert is queued, subfolders and all,
+still without a storage permission, and what it cannot convert is counted, not
+hidden.
+
 Batch convert — queue up dozens of files, or hand it a ZIP and it converts
 everything inside, then packs the results back into a new ZIP. Convert them all
 to one format, or shrink each one where it is: that keeps every file in its own
 format, so a mixed pile of photos, videos and audio gets lighter in one go with
-a single quality setting. There is a real progress bar for the batch and for
-each file.
+a single quality setting.
 
-Real progress — the percentage you see comes from the encoder itself, not from
-a spinner pretending to work. When a format genuinely has nothing to measure,
-The app says so instead of inventing a number.
+Real progress — the percentage comes from the encoder itself, not from a
+spinner pretending to work. When a format has nothing to measure, the app says
+so rather than inventing a number.
 
 Fine control — quality, resize, bitrate, sample rate, video quality, frame
 rate, PDF page ranges and render density, and a switch to strip EXIF, location
@@ -86,9 +90,8 @@ you send it, and sent only where you choose.
 
 DESIGN
 
-Pure black and white, in both directions: white buttons on black in dark mode,
-black buttons on white in light mode. A field of stars drifts and pulses
-behind everything, and picks up speed while a conversion runs.
+Pure black and white in both directions, with a field of stars behind
+everything that speeds up while a conversion runs.
 
 PRIVACY
 
@@ -97,9 +100,8 @@ The conversion code never touches the network — the only thing in the app that
 does is the ad banner. Your history, presets and settings live in private app
 storage and go nowhere.
 
-Nothing about a failure is sent anywhere either. A report is a text file you
-choose to share, it contains no file contents, and the folder paths an error
-message mentions are removed before it is even shown to you.
+A failure report is a text file you choose to share: no file contents, and
+folder paths stripped before it is even shown to you.
 
 The app is free. If it saves you time, there is a tip jar in Settings.
 
@@ -108,6 +110,8 @@ OPEN SOURCE
 The full source code is available — you can verify that nothing leaves your
 device.
 ```
+*(3,961 characters — 39 of the 4,000 left. Recount after any edit; the app
+name and short description notes above were both stale by a few characters.)*
 
 ## Category
 
@@ -120,7 +124,8 @@ Everyone
 ## Tags
 
 file converter, offline converter, image converter, video converter,
-audio converter, PDF converter, HEIC to JPG, MP4 to MP3, local, no upload
+audio converter, PDF converter, HEIC to JPG, MP4 to MP3, batch converter,
+bulk convert, convert whole folder, local, no upload
 
 ## Data safety declaration
 
@@ -147,15 +152,21 @@ manifest — plugins merge permissions in, and two of them had to be stripped.
 | `ACCESS_NETWORK_STATE` | Required by the Google Mobile Ads SDK |
 | `AD_ID`, `ACCESS_ADSERVICES_*` | AdMob on Android 13+ |
 | `WAKE_LOCK` | Keeps long video and batch conversions running |
-| `FOREGROUND_SERVICE` | Declared by the FFmpeg plugin |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC` | Let a running conversion continue when the user switches to another app rather than being killed in the background. `dataSync` is the type the platform requires to be named from Android 14 on |
+| `POST_NOTIFICATIONS` | Shows the progress of that run and says when it has finished. Requested when the first conversion starts; declining it costs only the notification |
 
 **No storage or media permission is requested.** `READ_EXTERNAL_STORAGE` and
 `READ_MEDIA_IMAGES` / `VIDEO` / `AUDIO` were being merged in by the file picker
 plugin and are explicitly removed in the manifest. Files reach the app only
-through Android's own document picker, its share sheet, or "Open with" — none
-of which requires a permission, because Android hands the app a temporary read
-grant on the URI it was given — and results are written to app-private storage
-and shared out via the system share sheet. Verified on device: picking still
+through Android's own document picker, its share sheet, "Open with", or the
+system folder picker when the user lends the app a single folder — none of
+which requires a permission, because Android hands the app a temporary read
+grant on the URI or tree it was given. A folder grant reaches that one folder
+and nothing else; what is read out of it is copied into the app's working
+storage, which the in-app "Clear working files" removes. Results are written to
+app-private storage and shared out via the system share sheet. The Gallery copy is written through
+MediaStore, which likewise needs no permission on Android 10 and above; on
+older versions it is not written at all. Verified on device: picking still
 works with all of them removed, and sharing adds nothing to the permission
 list (checked against the built APK with `aapt2 dump badging`).
 
@@ -181,6 +192,11 @@ access it never uses.
 - [x] Adaptive + monochrome launcher icons
 - [x] Native launch screen for light and dark
 - [x] Phone screenshots (720×1640, from the signed release build)
+- [ ] Recapture the screenshots that predate the last few releases: `3_batch.png`
+      (the add row is now Files · Folder · ZIP, not Add files · From ZIP),
+      `6_settings.png` (Save to Gallery), and `7_result_preview.png` (the
+      "Also copied to" line). `1_splash`, `2_home`, `4_history` and `5_files`
+      still match
 - [x] Release AAB built and verified signed (valid to 2056)
 - [x] Every conversion path exercised on a physical device (54/54 host + device matrix)
 - [x] End-to-end conversion verified in the signed release build

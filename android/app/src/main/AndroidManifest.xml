@@ -9,6 +9,20 @@
     <!-- Long video and batch conversions keep running while the app is open. -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
+    <!-- And keep running when the app is not on screen. Android is free to kill
+         a backgrounded process, which is what a tester sees as a run that
+         "just stopped" after they switched apps; a foreground service is what
+         stops that, and the notification below is its price. dataSync is the
+         type that covers writing converted files, and the platform requires it
+         to be named from Android 14 on. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+
+    <!-- From Android 13 a notification is hidden until the user allows it. It
+         is asked for when the first conversion starts, and refusing it costs
+         only the notification: the conversion runs either way. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <!-- AdMob on Android 13+ -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
 
@@ -92,6 +106,14 @@
                 <data android:mimeType="application/vnd.ms-fontobject" />
             </intent-filter>
         </activity>
+
+        <!-- Holds the process up while a conversion runs, and carries the
+             progress notification. Not exported: nothing outside this app may
+             start or bind it. -->
+        <service
+            android:name=".ConversionService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"/>
 
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"

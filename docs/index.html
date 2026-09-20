@@ -36,7 +36,7 @@
     <p>The only part of this app that uses the internet at all is the advertising banner, provided by Google AdMob.</p>
 
     <h2>What the app does with your files</h2>
-    <p>When you pick a file, the app reads it, converts it on your device, and writes the result to the app's own private storage folder. That is the whole lifecycle.</p>
+    <p>When you pick a file, the app reads it, converts it on your device, and writes the result into its own private storage folder. Files you hand to the app — shared in from another app, or read out of a folder you pick — are first copied into that same working storage, because the converters work on files rather than on Android's <code>content://</code> addresses. <strong>Settings → Clear working files</strong> erases those copies and everything else the app kept while working. So that a converted file is findable outside the app, a copy is also placed in your phone's own Gallery — or in <strong>Download/OneKit</strong> for documents and other files a gallery would not show — where your other apps can see it. Both copies are on your device: nothing is uploaded, and neither is shared with us or anyone else. <strong>Settings → Save to Gallery</strong> turns the copy off; with it off, results stay inside the app's private folder and leave only through a share sheet you choose.</p>
     <ul>
         <li>Your files are <strong>not uploaded</strong> anywhere.</li>
         <li>Your files are <strong>not shared</strong> with us or any third party.</li>
@@ -64,8 +64,10 @@
         <tr><td><code>ACCESS_NETWORK_STATE</code></td><td>Required by the Google Mobile Ads SDK.</td></tr>
         <tr><td><code>AD_ID</code></td><td>Required by AdMob on Android 13 and above.</td></tr>
         <tr><td><code>WAKE_LOCK</code></td><td>Keeps long video and batch conversions running while the app is open.</td></tr>
+        <tr><td><code>FOREGROUND_SERVICE</code>, <code>FOREGROUND_SERVICE_DATA_SYNC</code></td><td>Let a running conversion continue when you switch to another app instead of being killed in the background.</td></tr>
+        <tr><td><code>POST_NOTIFICATIONS</code></td><td>Shows that run's progress, and says when it has finished. Asked for when the first conversion starts; declining it costs only the notification, and the conversion still runs.</td></tr>
     </table>
-    <p>The app does <strong>not</strong> request storage permission. Files reach the app only through Android's own file picker, which means you choose each file explicitly, and results are shared out through Android's share sheet.</p>
+    <p>The app does <strong>not</strong> request storage permission. Files reach the app only through Android's own pickers — one file at a time, or a single folder you lend the app through the system's folder picker, which grants access to that one folder and nothing else — so you choose explicitly what it may read, and results are shared out through Android's share sheet. The Gallery copy uses Android's own media store, which needs no permission on Android 10 and above; on older versions it is not written, and the result stays in the app's private folder.</p>
 
     <h2>Diagnostics and reports</h2>
     <p>The app has no analytics, no crash-reporting SDK, and no endpoint to send anything to. If a conversion fails, the result screen offers <strong>Send a report</strong>. The app then writes a plain-text report containing what you typed, the device model, the Android version and security patch, the ABI the installed build is running, the app version and build number, where the build was installed from, the conversion options, and the engine's own output for the failure — FFmpeg's log tail or the decoder's message. The whole text is shown on screen before you send it, and it leaves the device only through a share sheet you choose, to a recipient you pick.</p>

@@ -17,6 +17,16 @@ enum PdfTool {
         PdfTool.rotate => 'PDF rotated',
         PdfTool.compress => 'PDF compressed',
       };
+
+  /// What the tool is doing while it runs, for the progress notification. The
+  /// label above is past tense because it describes a finished job; this one is
+  /// on screen while there is still something to wait for.
+  String get working => switch (this) {
+        PdfTool.merge => 'Merging PDFs',
+        PdfTool.split => 'Splitting a PDF',
+        PdfTool.rotate => 'Rotating PDF pages',
+        PdfTool.compress => 'Compressing a PDF',
+      };
 }
 
 /// How a split divides a document.

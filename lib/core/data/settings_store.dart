@@ -10,6 +10,7 @@ class SettingsStore extends ChangeNotifier {
   static const _kImageQuality = 'image_quality';
   static const _kKeepOriginals = 'keep_originals';
   static const _kOutputDir = 'output_dir';
+  static const _kSaveToGallery = 'save_to_gallery';
   static const _kOnboarded = 'onboarded';
   static const _kConversionCount = 'conversion_count';
   static const _kRated = 'rated';
@@ -57,6 +58,19 @@ class SettingsStore extends ChangeNotifier {
     } else {
       await _prefs.setString(_kOutputDir, v);
     }
+    notifyListeners();
+  }
+
+  /// Whether a finished conversion is also copied into the phone's own Gallery
+  /// and Downloads folders.
+  ///
+  /// On by default. The app's own folder is the only place it may write without
+  /// asking for a permission, and it is also a folder no other app shows, so a
+  /// converted photo is findable only from inside OneKit — which is not where
+  /// anyone looks. Off leaves every result inside the app.
+  bool get saveToGallery => _prefs.getBool(_kSaveToGallery) ?? true;
+  Future<void> setSaveToGallery(bool v) async {
+    await _prefs.setBool(_kSaveToGallery, v);
     notifyListeners();
   }
 

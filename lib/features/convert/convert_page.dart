@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/ads/ads.dart';
+import '../../core/background/background_task.dart';
 import '../../core/data/history_store.dart';
 import '../../core/data/preset_store.dart';
 import '../../core/data/settings_store.dart';
@@ -188,6 +189,16 @@ class _ConvertPageState extends State<ConvertPage> {
       _phase = _Phase.running;
     });
 
+    // Read before the first await: after one, this screen's context is no
+    // longer safe to read from, which is why the settings are taken here rather
+    // than at the call below.
+    final settings = context.read<SettingsStore>();
+
+    // What keeps Android from killing this run once the screen is gone. Raised
+    // before the work starts rather than alongside it, so the process is already
+    // in the foreground by the time the first slow frame is due.
+    await BackgroundTask.instance.begin('Converting ${job.name}');
+
     await ConversionEngine.instance.run(
       job,
       cancel: cancel,
@@ -198,9 +209,17 @@ class _ConvertPageState extends State<ConvertPage> {
         if (mounted && _indeterminate != job.indeterminate) {
           setState(() => _indeterminate = job.indeterminate);
         }
+        // Throttled inside; the engine ticks far faster than a notification
+        // should be reposted.
+        BackgroundTask.instance.report(job.progress, indeterminate: job.indeterminate);
       },
-      outputDirectory: context.mounted ? context.read<SettingsStore>().outputDir : null,
+      outputDirectory: settings.outputDir,
+      publishToGallery: settings.saveToGallery,
     );
+
+    // Ended before the mounted check below, and whatever the outcome: a
+    // foreground service left up is a notification the user cannot clear.
+    await BackgroundTask.instance.end(notice: _noticeFor(job));
 
     if (!mounted) return;
     await HistoryStore.instance.record(job);
@@ -213,6 +232,20 @@ class _ConvertPageState extends State<ConvertPage> {
     if (job.status == JobStatus.done && mounted) {
       await AdManager.instance.onBatchComplete(context);
     }
+  }
+
+  /// What the finished-run notification says.
+  ///
+  /// Short and true. A cancelled run says nothing at all — the user is the one
+  /// who cancelled it — and a failure says so plainly rather than leaving the
+  /// notification to be cleared with no news either way.
+  static String? _noticeFor(ConversionJob job) {
+    if (job.status == JobStatus.cancelled) return null;
+    if (job.status != JobStatus.done) return '${job.name} could not be converted';
+    final delta = job.sizeDeltaRatio;
+    final smaller =
+        delta != null && delta < 0 ? ' · ${(delta.abs() * 100).toStringAsFixed(0)}% smaller' : '';
+    return '${job.name} converted$smaller';
   }
 
   void _cancelJob() {
@@ -710,6 +743,31 @@ class _ConvertPageState extends State<ConvertPage> {
               Text(
                 '+ ${job.extraOutputs.length} more file${job.extraOutputs.length == 1 ? '' : 's'} saved alongside it',
                 style: TextStyle(fontSize: 12.5, color: t.textFaint),
+              ),
+            ],
+            // Where the result is beyond this app. It is the whole point of the
+            // copy: someone who converts a photo should find it in their Gallery
+            // afterwards, not only inside OneKit.
+            if (job.publishedTo != null) ...[
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.photo_library_outlined, size: 16, color: t.textFaint),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Also copied to ${job.publishedTo}, so other apps can find it.',
+                      style: TextStyle(fontSize: 12.5, height: 1.4, color: t.textFaint),
+                    ),
+                  ),
+                ],
+              ),
+            ] else if (job.publishProblem != null) ...[
+              const SizedBox(height: 14),
+              Text(
+                job.publishProblem!,
+                style: TextStyle(fontSize: 12.5, height: 1.4, color: t.textFaint),
               ),
             ],
           ],
