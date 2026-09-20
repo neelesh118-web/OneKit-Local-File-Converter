@@ -184,6 +184,11 @@ access it never uses.
 
 ## Release checklist
 
+This is about the app being publishable at all. Which artifact is on which
+track, with its versionCode and the commit it came from, is in `releases.md` —
+kept apart on purpose, because this list does not change and that one changes
+with every upload.
+
 - [x] Release keystore generated (`android/onekit-release.jks`, git-ignored)
 - [x] `key.properties` wired into `build.gradle.kts`
 - [x] Minify + resource shrinking on, with ProGuard keeps for FFmpeg/pdfium/Ads
@@ -197,8 +202,12 @@ access it never uses.
       `6_settings.png` (Save to Gallery), and `7_result_preview.png` (the
       "Also copied to" line). `1_splash`, `2_home`, `4_history` and `5_files`
       still match
-- [x] Release AAB built and verified signed (valid to 2056)
-- [x] Every conversion path exercised on a physical device (54/54 host + device matrix)
-- [x] End-to-end conversion verified in the signed release build
+- [x] Release AAB signed with the upload key (valid to 2056)
+- [x] Every conversion path exercised on a physical device (54/54 host + device
+      matrix) — verified on build 1
+- [x] End-to-end conversion verified in the signed release build — build 1
+- [ ] Foreground service permissions declaration answered in the Play Console
+      (App content), which build 2 is the first to need: it targets API 36 with
+      `foregroundServiceType="dataSync"`. See `releases.md`
 - [x] Privacy policy URL — https://neelesh118-web.github.io/OneKit-Local-File-Converter/
 - [x] FFmpeg licence — GPL, source available (open-source app, fully compliant)
