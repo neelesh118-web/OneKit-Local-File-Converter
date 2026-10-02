@@ -27,9 +27,20 @@ can go to production rather than to the closed test. What it changes:
 | | |
 | --- | --- |
 | Version | `1.1.0+4` (versionName 1.1.0, versionCode 4) |
-| Built from | the tree of the commit that added this record and the `+4` bump |
-| Signed | upload key `CN=OneKit`, the same keystore as build 3 |
+| Built from | commit `494c8a4` and the `+4` bump in the commit before it |
+| Artifact | `app-release.aab`, 119,532,684 bytes (114.0 MB) |
+| SHA-256 | `07d1da83c784fb934142220a7e85423ae4129964ca8ab4683292d2f3df563759` |
+| Signed | upload key `CN=OneKit`, serial `e97afa60114d2212`, SHA-256 `71:7A:44:F8:…:7E:14:9A`, valid to 19 August 2056 |
 | Copy for upload | `~/Desktop/app-release.aab` |
+| Build output | `build/app/outputs/bundle/release/app-release.aab` (git-ignored) |
+| Device pass | `app-release.apk`, 81,816,702 bytes, SHA-256 `a237dd223f165c90a6bc73e70e4ed1237640d392912ba6d6e376987132b68d42` |
+
+The `versionCode` inside the bundle was read back out of it, not assumed:
+`tool/release_check.dart` reports `versionCode is 4 (found 4)` from
+`base/manifest/AndroidManifest.xml`, and the APK is read the same way through
+the SDK's own `aapt2 dump badging`. The same tool is what caught build 3's
+missing ad units, and it is run against every artifact before it is copied
+anywhere — thirteen checks, all read from the file rather than from the tree.
 
 **The ads were off.** Build 3 shipped with `AdManager.initialize()` commented
 out in `lib/main.dart` — a leftover from taking screenshots, on the reasoning
