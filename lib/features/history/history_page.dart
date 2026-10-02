@@ -135,6 +135,11 @@ class _HistoryPageState extends State<HistoryPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
+                      // A native card rather than a banner here: this list is the
+                      // one screen a user scrolls rather than glances at, so the
+                      // format that is meant to be read pays better than one
+                      // built to be ignored. It collapses when it does not fill.
+                      const NativeAdCard(),
                     ],
                     if (_entries.isEmpty)
                       EmptyState(

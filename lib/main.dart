@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'app.dart';
+import 'core/ads/ads.dart';
 import 'core/data/preset_store.dart';
 import 'core/data/settings_store.dart';
 
@@ -40,8 +41,19 @@ Future<void> main() async {
     ),
   );
 
-  // TODO(screenshots): Re-enable ads after taking screenshots.
-  // WidgetsBinding.instance.addPostFrameCallback((_) {
-  //   unawaited(AdManager.instance.initialize());
-  // });
+  // Ads start on the first frame rather than in front of it: nothing about the
+  // first paint should wait on a consent round trip, and the form the consent
+  // SDK may put up must not land on a splash screen that has not drawn yet.
+  //
+  // The one launch that stays clean is the first one, before onboarding is
+  // done: an ad in front of a new user buys a single impression with the whole
+  // first opinion of the app.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(
+      () async {
+        await AdManager.instance.start(firstRunComplete: settings.onboarded);
+        await AdManager.instance.showAppOpenOnLaunch();
+      }(),
+    );
+  });
 }

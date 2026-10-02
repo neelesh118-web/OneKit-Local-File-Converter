@@ -249,6 +249,14 @@ class _SettingsPageState extends State<SettingsPage> {
               const SizedBox(height: 10),
               const SupportCard(),
               const SizedBox(height: 10),
+              // The ad rows, which appear only when there is something they can
+              // actually do: a row that opens a form which will not show, or
+              // offers a video that cannot load, is worse than no row.
+              ListenableBuilder(
+                listenable: AdManager.instance,
+                builder: _adsPanel,
+              ),
+              const SizedBox(height: 10),
               Panel(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                 child: ListTile(
@@ -267,6 +275,86 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     );
   }
+}
+
+Widget _adsPanel(BuildContext context, Widget? _) {
+  final t = context.tokens;
+  final ads = AdManager.instance;
+  final canWatch = ads.enabled;
+  final needsOptions = ads.privacyOptionsRequired;
+  if (!canWatch && !needsOptions) return const SizedBox.shrink();
+
+  return Column(
+    children: [
+      if (canWatch)
+        Panel(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: ListTile(
+            leading: const Icon(Icons.smart_display_outlined),
+            title: Text(ads.adFree ? 'Ads are hidden for now' : 'Hide ads for an hour'),
+            subtitle: Text(
+              ads.adFree
+                  ? 'Back in ${_remaining(ads.adFreeRemaining)}. Thanks for watching.'
+                  : 'Watch a short video. It is the only ad you choose to see, and it '
+                      'turns every other one off for an hour.',
+              style: TextStyle(fontSize: 12.5, color: t.textFaint),
+            ),
+            trailing: ads.adFree ? null : const Icon(Icons.play_circle_outline_rounded),
+            onTap: ads.adFree ? null : () => _watchForAdFree(context),
+          ),
+        ),
+      if (canWatch && needsOptions) const SizedBox(height: 10),
+      if (needsOptions)
+        Panel(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: ListTile(
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: const Text('Ad privacy options'),
+            subtitle: Text(
+              'Change what you agreed to when the consent form was shown.',
+              style: TextStyle(fontSize: 12.5, color: t.textFaint),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _showPrivacyOptions(context),
+          ),
+        ),
+    ],
+  );
+}
+
+String _remaining(Duration? left) {
+  if (left == null) return 'a moment';
+  final minutes = left.inMinutes;
+  if (minutes >= 1) return '$minutes minute${minutes == 1 ? '' : 's'}';
+  return '${left.inSeconds} seconds';
+}
+
+/// Shows the rewarded video. The message afterwards is the honest one either
+/// way: an ad that could not be loaded is not a reward that was earned.
+Future<void> _watchForAdFree(BuildContext context) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final earned = await AdManager.instance.showRewardedForAdFree();
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(
+        earned
+            ? 'Ads are off for an hour.'
+            : 'No video was ready just now. Try again in a moment.',
+      ),
+    ),
+  );
+}
+
+Future<void> _showPrivacyOptions(BuildContext context) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final shown = await AdManager.instance.showPrivacyOptions();
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(
+        shown ? 'Ad privacy options updated.' : 'Those options are not available right now.',
+      ),
+    ),
+  );
 }
 
 class _ThemeRow extends StatelessWidget {

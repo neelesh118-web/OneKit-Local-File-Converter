@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/ads/ads.dart';
 import '../../core/data/history_store.dart';
 import '../../core/diagnostics/diagnostics.dart';
 import '../../core/diagnostics/report_file.dart';
@@ -240,6 +241,12 @@ class _FeedbackPageState extends State<FeedbackPage> {
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 12, height: 1.4, color: t.textFaint),
                       ),
+                      const SizedBox(height: 18),
+                      // The last screen in the app to get one: a report is written
+                      // between two other things, and the banner sits below the
+                      // buttons so nothing the user came here to press is pushed
+                      // off the screen.
+                      const AppBanner(),
                     ],
                   ),
                 ),

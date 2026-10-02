@@ -19,7 +19,58 @@ alongside the project.
 
 ## Closed testing
 
-### Build 3 — versionCode 3 — built 20 September 2026, not yet uploaded
+### Build 4 — versionCode 4 — 2 October 2026, the production build
+
+Production access was granted on 2 October, so this is the first build that
+can go to production rather than to the closed test. What it changes:
+
+| | |
+| --- | --- |
+| Version | `1.1.0+4` (versionName 1.1.0, versionCode 4) |
+| Built from | the tree of the commit that added this record and the `+4` bump |
+| Signed | upload key `CN=OneKit`, the same keystore as build 3 |
+| Copy for upload | `~/Desktop/app-release.aab` |
+
+**The ads were off.** Build 3 shipped with `AdManager.initialize()` commented
+out in `lib/main.dart` — a leftover from taking screenshots, on the reasoning
+that a screenshot of the app should not have an ad in it. The consequence was
+that the whole ad layer was unreachable, and with tree shaking on, no ad unit
+string survived into the compiled app at all. That is not an inference:
+`tool/release_check.dart` run against build 3's own AAB reports every one of the
+five units missing.
+
+Build 4 puts them back, on every screen, and adds what was never there:
+
+- **Ads on all seven screens** — the five tabs, plus Presets, PDF tools, About
+  and the report screen. A banner on each, which is the one format that never
+  interrupts anything.
+- **A native ad row** in History and Files: the SDK's own compact template,
+  styled in the app's colours, in the two lists long enough to be scrolled.
+- **An interstitial after every third finished run** at most, never twice
+  within two minutes, and never while a run is going. A forty-file batch counts
+  as one run, not forty.
+- **An app-open ad** on a cold launch and on coming back after two minutes
+  away, at most once an hour, and skipped entirely while a conversion is still
+  running in the background.
+- **A rewarded video** in Settings — "Hide ads for an hour" — which is the only
+  ad the user chooses to see, and the only way the app will ever show fewer of
+  them on request. The hour is remembered across restarts.
+- **UMP consent** before the first ad request, with the form reachable again
+  from Settings. This was missing from build 3 entirely, which for a production
+  release that serves the EEA is the gap that mattered most.
+- **A new launcher icon**, drawn by `tool/icon/onekit_icon.dart` rather than
+  exported from a design tool, with the adaptive background, foreground and
+  monochrome layers all rendered from the same shapes. The old tile was a
+  photograph of a laptop; this is the app's own mark on the app's own starfield.
+
+One more thing changed in the ad stack that is not a feature: **the ads are no
+longer disabled in debug builds.** Build 3's own comment said ads were off "for
+screenshots", which is the kind of switch that stays off. Debug builds request
+Google's sample units instead, which is what keeps the real account out of
+invalid-traffic trouble, and `test/ad_ids_test.dart` fails if a sample unit ever
+reaches the table a release build reads.
+
+### Build 3 — versionCode 3 — built 20 September 2026, uploaded to the closed test
 
 | | |
 | --- | --- |
@@ -79,16 +130,99 @@ September.** The Play Console's own page is the authority on where that stands.
 ## Before build 3 goes up
 
 - [ ] **Answer the foreground service declaration.** App content → Foreground
-      service permissions. The app targets API 36 and declares
-      `FOREGROUND_SERVICE_DATA_SYNC` with `foregroundServiceType="dataSync"`, so
-      Play will not publish the release until this is declared. The true
-      description: a conversion the user started keeps running when the app
-      leaves the screen, with a visible, cancellable progress notification, and
-      it writes the user's own converted file. If a reviewer objects that a
-      purely local conversion is not `dataSync`, the fallback is `specialUse`
-      with a justification.
-- [ ] **Run build 3 on a phone.** It is the first release build with R8 over the
-      new service and three channels, and the first with `POST_NOTIFICATIONS` and
+      service permissions. It is app-level and answered once; no rebuild and no
+      new `versionCode` is involved. The merged release manifest declares exactly
+      one type and one permission — `foregroundServiceType="dataSync"` with
+      `FOREGROUND_SERVICE_DATA_SYNC`.
+
+      Under **Data sync**, select **Local processing → Importing, exporting**.
+      That is the documented use case rather than a stretch: Android lists
+      "Import or export operations" and "Local file processing" as `dataSync`
+      work, and the service exists to write the converted copy. Do **not** select
+      *Media transcoding* — that wording belongs to
+      `FOREGROUND_SERVICE_MEDIA_PROCESSING`, which is Android 15+ only, so
+      choosing it under `dataSync` is the answer most likely to come back as a
+      type mismatch.
+
+      The free-text answers used:
+
+      > OneKit converts files the user selects, entirely on the device. When the
+      > user taps Convert, the app starts a data-sync foreground service so a
+      > long run — a large video, or a batch the user queued — is not killed when
+      > they switch apps or lock the screen. The service performs no network
+      > transfer: it writes the converted file to the app's own storage and then
+      > copies it to Downloads or the device Gallery through MediaStore. A single
+      > ongoing notification names the file being processed, shows progress and
+      > offers Cancel; when the run ends, the notification is replaced by a short
+      > "converted, 12% smaller" message.
+      >
+      > If the task is deferred: nothing defers it. The service starts only from
+      > the user's own tap on Convert, in the foreground, and work begins
+      > immediately; a delayed start would only leave the app's own progress
+      > display sitting still, and nothing is written until conversion completes.
+      >
+      > If the task is interrupted: the conversion stops where it is, the partial
+      > temporary file is discarded, and the queue shows the job as stopped rather
+      > than finished. The original file is never modified and the ongoing
+      > notification goes with the service, so the user is never left with a
+      > progress bar that lies.
+
+      The declaration also wants a **video link** per type, and it is mandatory —
+      the form will not save without it, and it is reviewed, so a placeholder or
+      an unrelated link gets the declaration refused and leaves the release
+      blocked. Unlisted on YouTube, not private.
+
+      What the recording has to show, in order — the trigger steps the user takes
+      and the fact that the work continues while they are not in the app:
+
+      1. Open OneKit and pick a file (or a folder), then tap **Convert**.
+      2. Allow the notification permission when it asks — refuse it and there is
+         nothing on screen to demonstrate.
+      3. Press **Home** so the app leaves the screen immediately, then pull down
+         the shade and show the ongoing notification naming the file with a
+         progress figure and a **Cancel** action.
+      4. Leave it there long enough for the progress to visibly change — this is
+         the whole point, so use a large video or a batch of files, not a
+         thumbnail that finishes before you can open the shade.
+      5. Tap the notification back into the app, then let the run finish and show
+         the **completion** notification replacing the progress one.
+
+      Screen-record it with Android's built-in recorder (Quick Settings → Screen
+      record), 45–90 seconds, unedited, no narration required. The steps should
+      match the description above word for word — the description promises a
+      progress figure, a Cancel action and a completion message, so all three
+      need to appear.
+
+      Getting build 3 onto the phone for this: the declaration blocks *uploads*,
+      so Play cannot deliver it yet. Build a release APK from this same tree
+      (`flutter build apk --release --split-per-abi`) and `adb install -r` it, or
+      try Internal app sharing (Test and release → Setup → Internal app sharing),
+      which is a separate upload path from the tracks and may not hit the same
+      gate. That install is also the device pass build 3 needs — one trip, both
+      purposes.
+
+      If it is refused, the fallbacks are `mediaProcessing` (a literal match for
+      "converting media to different formats", but Android 15+ only, so both
+      types would be declared and chosen at runtime) and `shortService` (no FGS
+      permission at all, therefore nothing to declare, but hard-capped near three
+      minutes so it suits only short conversions).
+- [ ] **Run build 3 on a phone.** Started 20 September on the Moto G06 Power
+      (Android 15, API 35, arm64): `versionCode=3` is installed, the app launches,
+      and `libflutter.so` loads clean.
+
+      Installing it required removing the Play build first, and that will be true
+      on any phone carrying the closed-test build: Play re-signs what it delivers
+      with its **app-signing key**, so an APK built locally (upload key) cannot
+      replace it — `adb install -r` fails with
+      `INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match`. The way in is
+      `adb uninstall com.onekit.converter` followed by `adb install` of
+      `flutter build apk --release --target-platform android-arm64` (81,296,883
+      bytes). Two consequences: the app's own data on that phone is gone (files
+      already written to Downloads or the Gallery are not), and Play stops
+      updating it until it is uninstalled again and reinstalled from the track.
+
+      It is the first release build with R8 over the new service and three
+      channels, and the first with `POST_NOTIFICATIONS` and
       `FOREGROUND_SERVICE_DATA_SYNC` in it. Worth exercising: pick a whole
       folder, watch the notification appear while the run goes and land after it,
       find the result in Gallery or `Download/OneKit`, and go back to Auto for

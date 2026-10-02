@@ -1,6 +1,6 @@
 # Privacy Policy — 100% Local File Converter
 
-**Last updated: 27 August 2026**
+**Last updated: 2 October 2026**
 
 ## The short version
 
@@ -57,6 +57,28 @@ policy: <https://policies.google.com/privacy>
 
 You can limit this at any time in **Android Settings → Privacy → Ads**, where
 you can delete or reset your advertising ID and opt out of ad personalisation.
+
+### Ads in the app, and your consent
+
+Where the law asks for it — the European Economic Area, the United Kingdom and
+Switzerland — the app shows Google's consent form before it requests any ad at
+all, and remembers your answer on the device. **Settings → Ad privacy options**
+opens that form again at any time, so the choice is never final.
+
+What the app shows, and how often:
+
+- a small **banner** at the bottom of each screen;
+- one **native ad** row in the History and Files lists, styled like the rows
+  around it;
+- a full-screen **interstitial** after every third finished conversion at most,
+  never twice within two minutes, and never while a conversion is running;
+- an **app-open ad** when the app is launched, or returned to after a couple of
+  minutes away — at most once an hour;
+- an optional **rewarded video** in Settings: watching it turns every ad off for
+  an hour.
+
+Ads are never requested while a conversion is in progress, and none appear on
+the first-run screens.
 
 ## Permissions the app requests, and why
 

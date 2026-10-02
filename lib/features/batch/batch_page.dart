@@ -391,7 +391,7 @@ class _BatchPageState extends State<BatchPage> {
     if (succeeded > 0) {
       HapticFeedback.mediumImpact();
       await context.read<SettingsStore>().bumpConversionCount(succeeded);
-      if (mounted) await AdManager.instance.onBatchComplete(context);
+      if (mounted) await AdManager.instance.onRunFinished();
     }
   }
 

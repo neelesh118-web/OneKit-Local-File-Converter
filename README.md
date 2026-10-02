@@ -300,6 +300,34 @@ the repository URL.
 There is no network code in the conversion path. The only outbound traffic in
 the whole app is AdMob. History and settings live in app-private storage.
 
+### Ads
+
+Ads are part of the app rather than something bolted to it, and the rules live
+in `lib/core/ads/ad_policy.dart` so they can be read and tested on their own:
+
+| Format | Where | How often |
+| --- | --- | --- |
+| Banner | bottom of every screen | always, while ads are on |
+| Native | History and Files lists | one row per list |
+| Interstitial | over the result of a finished run | every 3rd run at most, never twice in 2 minutes |
+| App open | launch, or back after 2+ minutes away | once an hour |
+| Rewarded | Settings → "Hide ads for an hour" | the user's choice |
+
+Nothing covers a conversion while it is running, nothing appears on the splash
+or the first-run onboarding, and nothing shows on a first launch — the ad stack
+starts after the first frame, and only once onboarding is done. Every format
+collapses to nothing when it fails to fill, so a screen never reserves space
+for an ad that did not arrive.
+
+Where consent is required (EEA, UK, Switzerland) Google's UMP form is shown
+before the first ad request, and **Settings → Ad privacy options** reopens it.
+A rewarded video buys an hour with no ads at all, remembered across restarts.
+
+The units are one per format, on the OneKit account, with Google's sample units
+in debug builds only — `test/ad_ids_test.dart` holds them to that, and
+`tool/release_check.dart` greps a built bundle for the sample account and for
+the consent debug switches and expects to find neither.
+
 The app requests no storage permission, including for sharing: a file handed
 over by another app arrives as a URI with a read grant for OneKit alone. Files
 reach the app by the user picking them, sharing them, handing them over with

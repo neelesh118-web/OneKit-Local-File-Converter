@@ -230,7 +230,7 @@ class _ConvertPageState extends State<ConvertPage> {
     if (!mounted) return;
     setState(() => _phase = _Phase.finished);
     if (job.status == JobStatus.done && mounted) {
-      await AdManager.instance.onBatchComplete(context);
+      await AdManager.instance.onRunFinished();
     }
   }
 

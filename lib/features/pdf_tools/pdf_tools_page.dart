@@ -288,6 +288,10 @@ class _PdfToolsPageState extends State<PdfToolsPage> {
         outputBytes: result.outputBytes,
         outputs: result.outputs,
       );
+      // A finished job is the app's natural pause — the result is on screen and
+      // the user is deciding what to do next — which is the only kind of moment
+      // an interstitial is allowed to interrupt anywhere in the app.
+      if (mounted) await AdManager.instance.onRunFinished();
     } else if (failure != null) {
       // A failed run is written down too, with the engine's own account of why.
       // It is what the report screen reads back, and without it a merge that

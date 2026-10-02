@@ -186,6 +186,10 @@ class _FilesPageState extends State<FilesPage> {
                           ),
                         ),
                         const SizedBox(height: 14),
+                        // A native card, not a banner: a converted file is the
+                        // thing a user came here for, and the ad above the list
+                        // is the one that is meant to look like a row of it.
+                        const NativeAdCard(),
                       ],
                       if (files.isEmpty)
                         EmptyState(

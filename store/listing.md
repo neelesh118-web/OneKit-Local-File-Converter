@@ -193,7 +193,12 @@ with every upload.
 - [x] `key.properties` wired into `build.gradle.kts`
 - [x] Minify + resource shrinking on, with ProGuard keeps for FFmpeg/pdfium/Ads
 - [x] AdMob app ID in the manifest
-- [x] Production ad unit IDs, with Google test units in debug builds
+- [x] Production ad unit IDs — one per format (banner, interstitial, native,
+      rewarded, app open) — with Google's sample units in debug builds
+- [x] UMP consent: the form is shown where it is required, and reopened from
+      Settings → Ad privacy options
+- [x] `tool/release_check.dart`: reads a built AAB back and fails if a sample
+      unit or a consent debug switch is in it
 - [x] Adaptive + monochrome launcher icons
 - [x] Native launch screen for light and dark
 - [x] Phone screenshots (720×1640, from the signed release build)
