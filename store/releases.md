@@ -81,6 +81,40 @@ Google's sample units instead, which is what keeps the real account out of
 invalid-traffic trouble, and `test/ad_ids_test.dart` fails if a sample unit ever
 reaches the table a release build reads.
 
+#### The device pass, 2 October
+
+The release APK was installed on the Moto G06 Power (`ZA223CF3NX`, Android 15)
+over `adb uninstall` of the Play build, and walked screen by screen:
+
+| Check | Result |
+| --- | --- |
+| Version on device | `versionCode=4`, `versionName=1.1.0` |
+| Demo units in the installed binary | none — production account ×5, sample account ×0, read out of `libapp.so` |
+| New icon | installed `res/BW.xml` is the adaptive icon with the new background, the 16%-inset foreground and monochrome; the background and monochrome PNGs are **pixel-identical** to the generated art, the foreground differs on 0.24% of pixels (aapt2 re-encoding, not different art) |
+| Banner on every screen | filled on all five tabs plus PDF tools, About and the report screen |
+| Native ad row | filled in both History and Files |
+| A conversion, with ads on | JPG → PNG, 747 ms, result listed in Files, no ad over the run |
+| Interstitial | appeared after the third finished run and dismissed back to the app |
+| Settings rows | "Hide ads for an hour" present; the privacy-options row correctly absent while no consent form exists |
+
+Two things this pass turned up that no test would have:
+
+- **The interstitial cadence is correct but was not obvious.** It counts runs
+  within a session, so the ad lands on the third run of a launch, not the third
+  ever. The first probe saw nothing because an earlier session had already spent
+  the count.
+- **App-open and rewarded both fail to load, with `Ad unit doesn't match
+  format`.** The same two units that failed during the first device attempt, and
+  they failed again on a connection that resolved DNS and served a real
+  advertiser in the banner and the native slot — so it is not the network. The
+  other three units of the same account serve fine, which points at the two
+  unit IDs themselves rather than at the code: the IDs went in on 13 September
+  (`0075097`) and have never been checked against the console. Both are
+  preloaded and neither is on a critical path, so the effect today is that a
+  launch shows no app-open ad and "Hide ads for an hour" answers "No video was
+  ready just now" — visible, but not broken. Worth confirming each ID in AdMob
+  against its format before build 5.
+
 ### Build 3 — versionCode 3 — built 20 September 2026, uploaded to the closed test
 
 | | |
