@@ -21,6 +21,12 @@ alongside the project.
 
 ### Build 4 — versionCode 4 — 2 October 2026, the production build
 
+Re-verified from the artifact's own bytes on 3 October 2026: the Desktop upload
+copy `~/Desktop/app-release.aab` is still 119,532,684 bytes and hashes to
+`07d1da83c784fb934142220a7e85423ae4129964ca8ab4683292d2f3df563759`, it carries
+`com.onekit.converter` with `versionCode 4`, and its `versionName` is `1.1.0` —
+the record below stands unchanged; nothing was rebuilt.
+
 Production access was granted on 2 October, so this is the first build that
 can go to production rather than to the closed test. What it changes:
 
