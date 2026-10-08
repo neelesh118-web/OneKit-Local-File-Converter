@@ -121,6 +121,131 @@ Two things this pass turned up that no test would have:
   ready just now" — visible, but not broken. Worth confirming each ID in AdMob
   against its format before build 5.
 
+### Build 6 — versionCode 6 — 8 October 2026, the cold launch finally gets its ad
+
+| | |
+| --- | --- |
+| Version | `1.1.0+6` (versionName 1.1.0, versionCode 6) |
+| Built from | the working tree of this pass — `lib/core/ads/ads.dart`, `lib/core/ads/ad_policy.dart`, two new tests in `test/ad_policy_test.dart` and the `+6` bump, **not yet committed** when the bundle was built (committed 8 Oct 2026 as `19ff086`); build 5's own changes are in the same tree |
+| Artifact | `LocalFileConverter-1.1.0+6.aab`, 119,535,272 bytes (114.0 MB) |
+| SHA-256 | `58bf8945434e4e8e91659ff32d7cc7c0aa74cf2ab5048ab48d292bed35b62c02` |
+| Signed | upload key `CN=OneKit`, serial `e97afa60114d2212`, SHA-256 `71:7A:44:F8:…:7E:14:9A` — the same key as every build |
+| Copy for upload | `~/Desktop/LocalFileConverter-1.1.0+6.aab`; build 5's copies are left where they are |
+| Build output | `build/app/outputs/bundle/release/app-release.aab` (git-ignored) |
+| Device pass | `LocalFileConverter-1.1.0+6.apk`, 94,081,698 bytes, SHA-256 `6e17572353bf17d6e9c58d826c15558ac832e422252bb57abbb70bcf4351a929` |
+
+**The one change: a cold launch now waits for the ad it asked for.** Build 5's
+record named the defect — `showAppOpenOnLaunch()` showed only an ad that was
+already in hand, and at a cold launch the request has just gone out, so the
+launch always found nothing and the ad it had fetched was spent on the next
+return. This fixes that shape rather than the symptom, the same shape ComingUp
+1.0.12+14 uses:
+
+- `_preloadAppOpen()` keeps the request it has in flight, `_appOpenRequest`,
+  which the load callbacks resolve with the ad or with null. The launch path
+  therefore has something to wait for instead of something to look for.
+- `showAppOpenOnLaunch()` waits for that answer inside
+  `AdPolicy.appOpenShowWindow` (five seconds — a new constant, with its reason)
+  and then **re-checks the rules** before showing: the SDK being up, the hour,
+  and the launch cooldown itself, so a reward bought or a return that showed an
+  ad while this one was in flight cannot produce a second one.
+- `_appOpenWithin(window)` hands back what is in hand *without consuming it*: an
+  ad the rules no longer allow stays in hand for the next return rather than
+  being thrown away, and only an ad that is still the manager's own is handed
+  back, so a stale object can never be shown.
+
+Nothing else changed. The rewarded unit is still `/6329394147` and still answers
+`Ad unit doesn't match format` — that is the other half of build 4's finding and
+it needs a Rewarded unit created in the console, not a code change.
+
+#### The device pass, 8 October
+
+Installed over the 1.1.0+5 install with `adb install -r` — the same signing key
+and a higher version code, so it was an update and the app's own data was
+preserved.
+
+| Check | Result |
+| --- | --- |
+| Version on device | `versionCode=6`, `versionName=1.1.0` |
+| Units in the installed binary | production account ×5 including `/9898941203`, the old `/9684466592` absent, sample account ×0, read out of `libapp.so` in both ABIs |
+| The bundle | `dart run tool/release_check.dart` against the AAB: **13 checks, 0 failing** |
+| The manifest | `aapt2` reads `versionCode 6`, `versionName 1.1.0` and the app id `ca-app-pub-2489505475567649~2600183490` |
+| **App-open on a cold launch** | **served** — force-stopped, launched, and the focused window became `com.onekit.converter/com.google.android.gms.ads.AdActivity` about 4–5 s later, captured in `_phone_1.1.0_build6_appopen_launch.png` and `_phone_1.1.0_build6_appopen_showing.png` |
+| Dismissing it | the first Back did not close it — the SDK holds an app-open ad until its own close is offered — and a Back about 100 s in returned focus to `com.onekit.onekit_converter.MainActivity`, with the same process (pid 12016) still up and the app redrawn (`_phone_1.1.0_build6_after_appopen.png`) |
+| The app's own log | no app-open load error at all this launch: the unit answered, and this time the launch showed it |
+| Consent | still `Publisher misconfiguration: … no form(s) configured for the input app ID` — the missing GDPR/US-states message, owner-side (M8's checklist) |
+| Reward video | still `Ad unit doesn't match format` — unchanged from builds 4 and 5 |
+
+Gates: `flutter analyze` clean, **229 app tests** (+2 — the launch window's
+size, and the rule that a launch which found no ad spends no cooldown, so the
+next return is still due), and the release check 13/13. The launch decision
+itself stays where the other ad rules are: the window is `AdPolicy`'s, and the
+manager only ever asks it.
+
+Still open, unchanged by this pass: the rewarded unit, the consent message and
+the Play upload.
+
+### Build 5 — versionCode 5 — 8 October 2026, the app-open unit the owner supplied
+
+| | |
+| --- | --- |
+| Version | `1.1.0+5` (versionName 1.1.0, versionCode 5) |
+| Built from | the working tree of this pass — `lib/core/ads/ad_ids.dart`, `tool/release_check.dart` and the `+5` bump, **not yet committed** when the bundle was built (committed 8 Oct 2026 as `19ff086`) |
+| Artifact | `LocalFileConverter-1.1.0+5.aab`, 119,532,881 bytes (114.0 MB) |
+| SHA-256 | `27811dd91cc094dd71077bcf869c4480ac9b90a10a433174df3a9e1315b8183a` |
+| Signed | upload key `CN=OneKit`, serial `e97afa60114d2212`, SHA-256 `71:7A:44:F8:…:7E:14:9A`, valid to 19 August 2056 — the same key as every build |
+| Copy for upload | `~/Desktop/LocalFileConverter-1.1.0+5.aab`; build 4's `app-release.aab` is left where it was, untouched |
+| Build output | `build/app/outputs/bundle/release/app-release.aab` (git-ignored) |
+| Device pass | `LocalFileConverter-1.1.0+5.apk`, 94,080,554 bytes, SHA-256 `3ddb1284487cbf41d4e72d9b38abd7a2fda04b9b5ae3c445090ad1cfbd794338` |
+
+**One change: the app-open unit.** Build 4's device pass ended with "worth
+confirming each ID in AdMob against its format before build 5", and the answer
+was the format: `/9684466592` was not an app-open unit, which is why every
+request to it came back as `Ad unit doesn't match format`. The owner supplied a
+new one on 8 October 2026 and it replaces the old id in `AdIds._production`:
+
+| | |
+| --- | --- |
+| Was | `ca-app-pub-2489505475567649/9684466592` |
+| Now | `ca-app-pub-2489505475567649/9898941203` |
+
+Nothing else changed. `tool/release_check.dart` looks for the new value, so an
+artifact built from the old tree fails that check by name; the demo table still
+holds Google's app-open sample (`/9257395921`), and a debug build is still the
+only build that asks for it.
+
+#### The device pass, 8 October
+
+Installed over the 1.1.0+4 install with `adb install -r` — the same signing key
+and a higher version code, so it was an update and the app's own data was
+preserved.
+
+| Check | Result |
+| --- | --- |
+| Version on device | `versionCode=5`, `versionName=1.1.0` |
+| Units in the installed binary | production account ×5 including `/9898941203`, the old `/9684466592` absent, sample account ×0, read out of `libapp.so` |
+| The bundle | `dart run tool/release_check.dart` against the AAB: **13 checks, 0 failing** |
+| App-open on a cold launch | **did not appear** — see below |
+| App-open on a return | **served**, after 150 s away: the focused window became `com.onekit.converter/com.google.android.gms.ads.AdActivity`, captured in `_phone_1.1.0_build5_appopen_resume.png` |
+| Dismissing it | Back returned focus to `com.onekit.onekit_converter.MainActivity`, the process stayed up and the app redrew (`_phone_1.1.0_build5_after_appopen.png`) |
+| Reward video | still `Ad unit doesn't match format` — `/6329394147` is the second of the two bad ids and was not replaced this pass |
+
+Two things this pass turned up:
+
+- **The cold-launch app-open cannot show, and it is the code rather than the
+  unit.** `showAppOpenOnLaunch()` runs after the first frame and `_showAppOpen()`
+  shows only an ad that is *already* in hand; the preload started moments earlier
+  in `initialize()` cannot have finished, so a cold launch always finds nothing,
+  calls `_preloadAppOpen()` again, and the ad those requests fetch sits in
+  `_appOpen` until the next return — which is exactly what the resume probe saw.
+  Showing an app-open ad when it arrives, while the launch window is still open,
+  is the standard shape for the format (and what ComingUp 1.0.12+14 does), so the
+  fix is to let the load completion show it.
+- **The rewarded unit is the other half of build 4's finding and is still
+  broken.** `/6329394147` answers with the same format error. It needs what the
+  app-open unit just got: a Rewarded unit created or confirmed in the console,
+  then swapped in, with `tool/release_check.dart` moved with it.
+
 ### Build 3 — versionCode 3 — built 20 September 2026, uploaded to the closed test
 
 | | |
