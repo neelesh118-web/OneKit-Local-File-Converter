@@ -42,7 +42,11 @@ class AdIds {
     AdFormat.interstitial: '$account/5936793275',
     AdFormat.native: '$account/1095530132',
     AdFormat.rewarded: '$account/6329394147',
-    AdFormat.appOpen: '$account/9684466592',
+    // Replaced on 8 October 2026 for build 5. The first app-open unit
+    // (…/9684466592) answered "Ad unit doesn't match format" on every
+    // attempt, in the build-4 device pass and again in the first one; this
+    // one was created for the app-open format itself.
+    AdFormat.appOpen: '$account/9898941203',
   };
 
   static const _demo = <AdFormat, String>{

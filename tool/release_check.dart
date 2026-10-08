@@ -128,7 +128,9 @@ void main(List<String> args) {
   check('the interstitial unit is present', code.contains('ca-app-pub-2489505475567649/5936793275'));
   check('the native unit is present', code.contains('ca-app-pub-2489505475567649/1095530132'));
   check('the rewarded unit is present', code.contains('ca-app-pub-2489505475567649/6329394147'));
-  check('the app-open unit is present', code.contains('ca-app-pub-2489505475567649/9684466592'));
+  // Build 5 swapped this unit: the first one never served (see
+  // store/releases.md, build 4 — "Ad unit doesn't match format").
+  check('the app-open unit is present', code.contains('ca-app-pub-2489505475567649/9898941203'));
 
   check(
     'no demo ad units in the app code',

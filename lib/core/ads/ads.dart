@@ -22,7 +22,8 @@ import 'consent_debug.dart';
 /// * a banner on every screen, which is the only format that never interrupts;
 /// * an interstitial after every third finished run at most, and never twice
 ///   within two minutes;
-/// * an app-open ad when the app is opened cold, or come back to after minutes
+/// * an app-open ad when the app is opened cold — after waiting inside
+///   [AdPolicy.appOpenShowWindow] for the ad it asked for — or come back to after minutes
 ///   away — never in the middle of a run, and never twice in an hour;
 /// * a native card in the two long lists, which is the format that pays like a
 ///   banner but is meant to be looked at;
@@ -56,6 +57,10 @@ class AdManager extends ChangeNotifier with WidgetsBindingObserver {
   InterstitialAd? _interstitial;
   bool _loadingInterstitial = false;
   AppOpenAd? _appOpen;
+  /// The app-open request that is in flight, resolved with the ad when it
+  /// arrives and with null when the SDK has none — the answer a cold launch
+  /// waits for, since at a launch there is never one in hand yet.
+  Completer<AppOpenAd?>? _appOpenRequest;
   bool _loadingAppOpen = false;
   RewardedAd? _rewarded;
   bool _loadingRewarded = false;
@@ -170,8 +175,28 @@ class AdManager extends ChangeNotifier with WidgetsBindingObserver {
   /// Called after the first frame, so the call itself never delays startup, and
   /// skipped entirely while a run is on screen: someone returning to a
   /// conversion in progress came back to look at it.
+  ///
+  /// This is the one moment where the ad cannot already be in hand: the request
+  /// goes out when the SDK comes up, which is the same breath as this call. For
+  /// as long as this method only looked for a loaded ad it therefore always
+  /// found nothing at launch, and the answer it had asked for was spent on the
+  /// next return instead — which is what build 5's device pass measured. So a
+  /// launch waits here, inside [AdPolicy.appOpenShowWindow] and no longer, for
+  /// the answer to the request it has already made, and then re-checks the rules
+  /// that can have changed while it waited: an hour bought with a reward, a run
+  /// that has started, or a return that showed an app-open ad in the meantime.
+  /// Nothing allowed means nothing shown, and the ad stays in hand for the next
+  /// return rather than being thrown away.
   Future<void> showAppOpenOnLaunch() async {
     if (!_firstRunComplete) return;
+    if (!_appOpenSchedule.launchDue(DateTime.now())) return;
+
+    // The wait is the whole fix: the SDK is fetching this ad right now, and a
+    // launch is the only window in which it is worth having.
+    if (await _appOpenWithin(AdPolicy.appOpenShowWindow) == null) return;
+
+    // The wait was real, so the rules are re-checked against now rather than
+    // against the moment the launch began.
     if (!enabled || !_appOpenSchedule.launchDue(DateTime.now())) return;
     await _showAppOpen();
   }
@@ -354,6 +379,32 @@ class AdManager extends ChangeNotifier with WidgetsBindingObserver {
     await _showAppOpen();
   }
 
+  /// The app-open ad that is in hand, or the one being fetched right now, waited
+  /// for up to [window].
+  ///
+  /// Returns without consuming anything: the caller decides whether to show it,
+  /// and an ad the rules no longer allow stays in hand for the next return.
+  Future<AppOpenAd?> _appOpenWithin(Duration window) async {
+    final held = _appOpen;
+    if (held != null) return held;
+
+    // Nothing can be on its way: the SDK is not up, the user has bought the
+    // hour, or ads are removed.
+    if (!enabled) return null;
+
+    // The ordinary launch arrives here with the request already in flight: it
+    // went out when the SDK came up, moments before this.
+    if (_appOpenRequest == null) _preloadAppOpen();
+    final request = _appOpenRequest;
+    if (request == null || window <= Duration.zero) return null;
+
+    final arrived = await request.future.timeout(window, onTimeout: () => null);
+    // It may have been spent while it was on its way — a return that showed one,
+    // or a reward that bought the hour out — so only an ad still in hand is
+    // handed back.
+    return identical(_appOpen, arrived) ? arrived : null;
+  }
+
   Future<void> _showAppOpen() async {
     // Someone who came back to a conversion in progress came back to watch it.
     if (BackgroundTask.instance.running) return;
@@ -408,6 +459,7 @@ class AdManager extends ChangeNotifier with WidgetsBindingObserver {
   void _preloadAppOpen() {
     if (!enabled || _appOpen != null || _loadingAppOpen) return;
     _loadingAppOpen = true;
+    final request = _appOpenRequest = Completer<AppOpenAd?>();
     AppOpenAd.load(
       adUnitId: AdIds.appOpen,
       request: const AdRequest(),
@@ -415,11 +467,13 @@ class AdManager extends ChangeNotifier with WidgetsBindingObserver {
         onAdLoaded: (ad) {
           _loadingAppOpen = false;
           _appOpen = ad;
+          request.complete(ad);
         },
         onAdFailedToLoad: (error) {
           _loadingAppOpen = false;
           _appOpen = null;
           debugPrint('[AdManager] app open failed to load: ${error.message}');
+          request.complete(null);
         },
       ),
     );

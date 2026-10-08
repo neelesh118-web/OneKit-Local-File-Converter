@@ -116,6 +116,23 @@ void main() {
       schedule.reset();
       expect(schedule.launchDue(t0), isTrue);
     });
+
+    test('a launch that found no ad does not spend the hour', () {
+      final schedule = AppOpenSchedule();
+      // Nothing was marked shown, because the request came back empty. The
+      // launch path is allowed to wait for an ad without spending the cooldown:
+      // the next return, and the next launch, are still due.
+      schedule.markedShown(t0.subtract(const Duration(hours: 2)));
+      expect(schedule.launchDue(t0), isTrue);
+      expect(schedule.resumeDue(t0.add(const Duration(minutes: 5)), const Duration(minutes: 5)), isTrue);
+    });
+
+    test('the launch window is short enough to still be a launch', () {
+      // The wait happens in front of a user who is already using the app, so it
+      // is bounded well inside the gap that turns a return into an app open.
+      expect(AdPolicy.appOpenShowWindow, const Duration(seconds: 5));
+      expect(AdPolicy.appOpenShowWindow, lessThan(AdPolicy.appOpenBackgroundThreshold));
+    });
   });
 
   group('the rewarded hour', () {

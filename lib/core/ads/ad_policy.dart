@@ -41,6 +41,15 @@ class AdPolicy {
   /// the difference between a splash screen and a toll booth.
   static const appOpenCooldown = Duration(hours: 1);
 
+  /// How long a cold launch may wait for the app-open ad it has just asked for.
+  ///
+  /// The request goes out when the SDK comes up, which is the same breath as the
+  /// launch, so there is nothing in hand to show yet: this wait is the whole
+  /// difference between a launch ad and no launch ad. Five seconds is all of it —
+  /// past that the app has stopped being a launch, and an ad on top of a session
+  /// that has already started is an interruption rather than a greeting.
+  static const appOpenShowWindow = Duration(seconds: 5);
+
   /// What a finished rewarded video buys: an hour with no ads anywhere in the
   /// app, banners included.
   static const adFreeAfterReward = Duration(hours: 1);
